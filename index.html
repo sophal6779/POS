@@ -1,0 +1,2853 @@
+<!DOCTYPE html>
+<html lang="km" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Sky POS — ប្រព័ន្ធគ្រប់គ្រងភោជនីយដ្ឋាន (KH / EN / KR)</title>
+
+  <!-- Google Fonts: Kantumruy Pro (Khmer), Inter (English), Noto Sans KR (Korean) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Kantumruy+Pro:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Kantumruy Pro"', '"Inter"', '"Noto Sans KR"', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              50: '#ecfdf5',
+              100: '#d1fae5',
+              500: '#10b981',
+              600: '#059669',
+              700: '#047857',
+              800: '#065f46',
+              900: '#064e3b',
+              950: '#022c22',
+            },
+            gold: {
+              400: '#fbbf24',
+              500: '#f59e0b',
+              600: '#d97706',
+            }
+          }
+        }
+      }
+    };
+  </script>
+
+  <!-- QRCode.js, html2canvas & jsPDF CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+  <style>
+    body {
+      font-family: 'Kantumruy Pro', 'Inter', 'Noto Sans KR', sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* Custom Scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.35);
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(148, 163, 184, 0.6);
+    }
+
+    /* Pulse ring for new QR orders */
+    @keyframes pulseRing {
+      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7); }
+      70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(245, 158, 11, 0); }
+      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+    }
+    .qr-alert-pulse {
+      animation: pulseRing 1.8s infinite;
+    }
+
+    /* Thermal Print Styles (58mm / 80mm) */
+    @media print {
+      body * {
+        visibility: hidden !important;
+      }
+      #thermal-print-area, #thermal-print-area * {
+        visibility: visible !important;
+      }
+      #thermal-print-area {
+        position: fixed !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: 80mm !important;
+        max-width: 80mm !important;
+        margin: 0 !important;
+        padding: 4mm !important;
+        background: #ffffff !important;
+        color: #000000 !important;
+        font-family: 'Kantumruy Pro', 'Noto Sans KR', monospace !important;
+        font-size: 12px !important;
+        line-height: 1.4 !important;
+        box-shadow: none !important;
+      }
+      @page {
+        margin: 0;
+        size: 80mm auto;
+      }
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100 transition-colors duration-200 overflow-x-hidden select-none sm:select-auto">
+
+  <!-- Hidden Area Dedicated to Thermal Printer Output -->
+  <div id="thermal-print-area" class="hidden"></div>
+
+  <!-- Hidden Offscreen Container for Khmer-safe PDF Rendering -->
+  <div id="pdf-render-sandbox" class="fixed -left-[9999px] top-0 w-[794px] bg-white text-slate-900 p-8 font-sans"></div>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="fixed top-4 right-4 z-[100] flex flex-col gap-2 max-w-sm w-[calc(100%-2rem)] pointer-events-none"></div>
+
+  <!-- ===================================================================== -->
+  <!-- 1. ADMIN POS APPLICATION SHELL                                        -->
+  <!-- ===================================================================== -->
+  <div id="admin-app" class="min-h-screen flex flex-col lg:flex-row">
+
+    <!-- Mobile Sidebar Backdrop -->
+    <div id="sidebar-backdrop" onclick="toggleSidebar(false)" class="fixed inset-0 bg-black/60 backdrop-blur-xs z-40 hidden lg:hidden"></div>
+
+    <!-- Collapsible Left Admin Sidebar -->
+    <aside id="admin-sidebar" class="fixed lg:static inset-y-0 left-0 z-50 w-72 bg-brand-950 dark:bg-slate-900 text-white border-r border-brand-900/60 dark:border-slate-800 transform -translate-x-full lg:translate-x-0 transition-transform duration-200 flex flex-col justify-between shrink-0">
+      <div>
+        <!-- Brand Header -->
+        <div class="p-5 flex items-center justify-between border-b border-white/10">
+          <div class="flex items-center gap-3">
+            <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-gold-400 to-amber-600 flex items-center justify-center text-slate-950 font-extrabold text-xl shadow-lg">
+              SK
+            </div>
+            <div>
+              <h1 class="font-extrabold text-lg tracking-tight text-white flex items-center gap-1.5">
+                Sky POS
+                <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-gold-500/20 text-gold-400 font-bold">CLOUD</span>
+              </h1>
+              <p class="text-xs text-emerald-300/80 dark:text-slate-400" data-i18n="brandSubtitle">ប្រព័ន្ធគ្រប់គ្រងភោជនីយដ្ឋាន</p>
+            </div>
+          </div>
+          <button onclick="toggleSidebar(false)" class="lg:hidden p-2 rounded-xl hover:bg-white/10 text-slate-300">
+            ✕
+          </button>
+        </div>
+
+        <!-- Navigation Links -->
+        <nav class="p-3 space-y-1.5" id="sidebar-nav">
+          <button onclick="switchView('pos')" data-view="pos" class="nav-btn w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-semibold transition-all bg-brand-600 text-white shadow-md">
+            <span class="flex items-center gap-3">
+              <span class="text-lg">🛒</span>
+              <span data-i18n="navPos">បញ្ជរលក់ (POS Terminal)</span>
+            </span>
+          </button>
+
+          <button onclick="switchView('tables')" data-view="tables" class="nav-btn w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-semibold transition-all text-slate-300 hover:bg-white/10">
+            <span class="flex items-center gap-3">
+              <span class="text-lg">🪑</span>
+              <span data-i18n="navTables">តុទាំង ៣០ & QR កូដ</span>
+            </span>
+            <span id="badge-occupied-tables" class="text-xs px-2 py-0.5 rounded-full bg-white/10 text-emerald-300">0/30</span>
+          </button>
+
+          <button onclick="switchView('qr-orders')" data-view="qr-orders" class="nav-btn w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-semibold transition-all text-slate-300 hover:bg-white/10">
+            <span class="flex items-center gap-3">
+              <span class="text-lg">📲</span>
+              <span data-i18n="navQrOrders">ការកុម្ម៉ង់ពីភ្ញៀវ (QR)</span>
+            </span>
+            <span id="badge-qr-orders" class="hidden text-xs px-2 py-0.5 rounded-full bg-amber-500 text-slate-950 font-bold qr-alert-pulse">0</span>
+          </button>
+
+          <button onclick="switchView('menu')" data-view="menu" class="nav-btn w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-semibold transition-all text-slate-300 hover:bg-white/10">
+            <span class="flex items-center gap-3">
+              <span class="text-lg">🍜</span>
+              <span data-i18n="navMenu">គ្រប់គ្រងមុខម្ហូប & ប្រភេទ</span>
+            </span>
+          </button>
+
+          <button onclick="switchView('analytics')" data-view="analytics" class="nav-btn w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-semibold transition-all text-slate-300 hover:bg-white/10">
+            <span class="flex items-center gap-3">
+              <span class="text-lg">📊</span>
+              <span data-i18n="navAnalytics">ប្រវត្តិលក់ & ម្ហូបលក់ដាច់</span>
+            </span>
+          </button>
+
+          <button onclick="switchView('printers')" data-view="printers" class="nav-btn w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-semibold transition-all text-slate-300 hover:bg-white/10">
+            <span class="flex items-center gap-3">
+              <span class="text-lg">☁️</span>
+              <span data-i18n="navPrinters">Cloud & ម៉ាស៊ីនព្រីន</span>
+            </span>
+            <span id="sidebar-cloud-dot" class="w-2.5 h-2.5 rounded-full bg-slate-500"></span>
+          </button>
+        </nav>
+      </div>
+
+      <!-- Bottom Quick Customer Simulator & Status -->
+      <div class="p-4 border-t border-white/10 space-y-3">
+        <div class="p-3 rounded-2xl bg-white/5 border border-white/10">
+          <p class="text-xs text-slate-300 mb-2" data-i18n="qrSimHint">សាកល្បងអតិថិជនស្កេន QR កុម្ម៉ង់ម្ហូប៖</p>
+          <button onclick="openCustomerSimulator(currentTable)" class="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-gold-500 to-amber-500 hover:from-gold-400 hover:to-amber-400 text-slate-950 font-bold text-xs shadow-md transition flex items-center justify-center gap-2">
+            <span>📱</span>
+            <span data-i18n="btnSimulateScan">បើកផ្ទាំងភ្ញៀវស្កេន QR</span>
+          </button>
+        </div>
+        <div class="flex items-center justify-between text-[11px] text-slate-400 px-1">
+          <span>Currency: ₩ KRW</span>
+          <span>v3.0 Cloud Sync</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <div class="flex-1 flex flex-col min-w-0">
+
+      <!-- Top Header Bar -->
+      <header class="sticky top-0 z-30 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-3 sm:px-4 py-2.5 flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2 sm:gap-3">
+          <button onclick="toggleSidebar(true)" class="lg:hidden p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+          </button>
+
+          <!-- Selected Table Quick Selector -->
+          <button onclick="switchView('tables')" class="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl bg-brand-50 dark:bg-brand-950/80 border border-brand-200 dark:border-brand-800 text-brand-800 dark:text-emerald-300 font-bold text-xs sm:text-sm hover:opacity-90 transition">
+            <span>🪑</span>
+            <span data-i18n="tableLabel">តុទី</span>
+            <span id="header-table-num" class="px-2 py-0.5 rounded-lg bg-brand-600 text-white font-extrabold">01</span>
+          </button>
+
+          <!-- Cloud / Local Mode Status Pill -->
+          <button onclick="switchView('printers')" id="cloud-status-pill" class="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300">
+            <span id="cloud-status-dot" class="w-2 h-2 rounded-full bg-slate-400"></span>
+            <span id="cloud-status-text">Local Mode</span>
+          </button>
+        </div>
+
+        <!-- Right Controls: Notification Bell, Language Switcher, Dark Mode -->
+        <div class="flex items-center gap-1.5 sm:gap-2">
+          <!-- Notification Bell with Unread Badge -->
+          <button onclick="switchView('qr-orders')" class="relative p-2 sm:p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition" title="Live QR Orders">
+            <span class="text-base">🔔</span>
+            <span id="bell-unread-badge" class="hidden absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-slate-950 text-[10px] font-extrabold flex items-center justify-center qr-alert-pulse">0</span>
+          </button>
+
+          <!-- Trilingual Switcher -->
+          <div class="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+            <button onclick="setLanguage('km')" id="lang-km" class="lang-btn px-2 sm:px-2.5 py-1 rounded-lg text-xs font-bold transition">ខ្មែរ</button>
+            <button onclick="setLanguage('en')" id="lang-en" class="lang-btn px-2 sm:px-2.5 py-1 rounded-lg text-xs font-bold transition">EN</button>
+            <button onclick="setLanguage('ko')" id="lang-ko" class="lang-btn px-2 sm:px-2.5 py-1 rounded-lg text-xs font-bold transition">한국어</button>
+          </div>
+
+          <!-- Dark Mode Toggle -->
+          <button onclick="toggleDarkMode()" id="dark-mode-btn" class="p-2 sm:p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-base">
+            ☀️
+          </button>
+        </div>
+      </header>
+
+      <!-- ================================================================= -->
+      <!-- VIEW 1: POS TERMINAL (MENU + ORDER CART)                          -->
+      <!-- ================================================================= -->
+      <main id="view-pos" class="view-section flex-1 flex flex-col lg:flex-row overflow-hidden">
+        <!-- Left Menu Grid Area -->
+        <div class="flex-1 flex flex-col p-4 overflow-y-auto pb-24 lg:pb-4">
+          <!-- Search & Quick Actions Bar -->
+          <div class="flex flex-col sm:flex-row gap-2.5 mb-3">
+            <div class="relative flex-1">
+              <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
+              <input type="text" id="pos-search" oninput="renderPosMenu()" data-i18n-placeholder="searchPlaceholder" placeholder="ស្វែងរកមុខម្ហូប..." class="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
+            </div>
+            <div class="flex gap-2">
+              <button onclick="openQrModalForTable(currentTable)" class="flex-1 sm:flex-none px-3.5 py-2.5 rounded-xl bg-slate-900 dark:bg-slate-800 text-white text-xs font-bold flex items-center justify-center gap-1.5 hover:opacity-90 border border-slate-700">
+                <span>🏁</span>
+                <span data-i18n="showTableQr">QR តុនេះ</span>
+              </button>
+              <button onclick="openCustomerSimulator(currentTable)" class="flex-1 sm:flex-none px-3.5 py-2.5 rounded-xl bg-gold-500/20 text-amber-700 dark:text-gold-400 border border-gold-500/40 text-xs font-bold flex items-center justify-center gap-1.5 hover:opacity-90">
+                <span>📱</span>
+                <span data-i18n="simScanShort">សាកស្កេន</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Category Pills -->
+          <div id="pos-categories" class="flex items-center gap-2 overflow-x-auto pb-2 mb-3 shrink-0"></div>
+
+          <!-- Menu Cards Grid -->
+          <div id="pos-menu-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-4 gap-3 sm:gap-4"></div>
+        </div>
+
+        <!-- Right Order Cart Drawer (Desktop Fixed, Mobile Slide-Over) -->
+        <div id="pos-cart-panel" class="fixed inset-0 z-40 lg:static lg:z-auto lg:w-[400px] xl:w-[430px] bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 flex flex-col transform translate-y-full lg:translate-y-0 transition-transform duration-200">
+          <!-- Cart Header -->
+          <div class="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-900/90">
+            <div>
+              <div class="flex items-center gap-2">
+                <h2 class="font-extrabold text-base" data-i18n="currentOrder">បញ្ជីកុម្ម៉ង់បច្ចុប្បន្ន</h2>
+                <span class="px-2.5 py-0.5 rounded-lg bg-brand-600 text-white text-xs font-bold">
+                  <span data-i18n="tableLabel">តុទី</span> <span id="cart-table-num">01</span>
+                </span>
+              </div>
+              <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5" id="cart-order-time">--:--</p>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <button onclick="clearCurrentTableCart()" class="p-2 rounded-xl text-rose-500 hover:bg-rose-500/10 text-xs font-semibold" data-i18n="clearCart">សម្អាត</button>
+              <button onclick="toggleMobileCart(false)" class="lg:hidden p-2 rounded-xl bg-slate-200 dark:bg-slate-800 text-sm font-bold">✕</button>
+            </div>
+          </div>
+
+          <!-- Cart Items List -->
+          <div id="cart-items-list" class="flex-1 overflow-y-auto p-4 space-y-2.5"></div>
+
+          <!-- Cart Totals & Action Buttons -->
+          <div class="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/95 space-y-3">
+            <!-- Optional VAT & Discount Row (₩ or %) -->
+            <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
+              <label class="flex items-center gap-2 cursor-pointer text-slate-600 dark:text-slate-300">
+                <input type="checkbox" id="vat-toggle" onchange="renderCart()" class="rounded text-brand-600 focus:ring-brand-500 w-4 h-4">
+                <span data-i18n="includeVat">បូកពន្ធ VAT (10%)</span>
+              </label>
+              <div class="flex items-center gap-1">
+                <span class="text-slate-500" data-i18n="discountLabel">បញ្ចុះតម្លៃ:</span>
+                <input type="number" id="discount-input" value="0" min="0" oninput="renderCart()" class="w-20 px-2 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-right font-semibold">
+                <select id="discount-type" onchange="renderCart()" class="px-1.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-bold">
+                  <option value="krw">₩</option>
+                  <option value="pct">%</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Subtotal / Tax / Total -->
+            <div class="space-y-1 text-sm border-t border-slate-200 dark:border-slate-800 pt-2.5">
+              <div class="flex justify-between text-slate-500 dark:text-slate-400">
+                <span data-i18n="subtotal">សរុបរង</span>
+                <span id="cart-subtotal">₩0</span>
+              </div>
+              <div id="cart-discount-row" class="hidden justify-between text-rose-500">
+                <span data-i18n="discountShort">បញ្ចុះតម្លៃ</span>
+                <span id="cart-discount">-₩0</span>
+              </div>
+              <div id="cart-vat-row" class="hidden justify-between text-slate-500 dark:text-slate-400">
+                <span>VAT (10%)</span>
+                <span id="cart-vat">₩0</span>
+              </div>
+              <div class="flex justify-between items-center text-lg font-extrabold pt-1 text-slate-900 dark:text-white">
+                <span data-i18n="grandTotal">សរុបត្រូវបង់</span>
+                <span id="cart-total" class="text-brand-600 dark:text-gold-400 text-xl">₩0</span>
+              </div>
+            </div>
+
+            <!-- Action Buttons: Send to Kitchen (KOT) / Print Bill / Checkout -->
+            <div class="grid grid-cols-2 gap-2">
+              <button onclick="printKitchenTicket(currentTable)" class="py-2.5 px-3 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-400 border border-amber-500/30 font-bold text-xs flex items-center justify-center gap-1.5 transition">
+                <span>👨‍🍳</span>
+                <span data-i18n="printKitchen">ព្រីនទៅផ្ទះបាយ (KOT)</span>
+              </button>
+              <button onclick="previewAndPrintReceipt(currentTable)" class="py-2.5 px-3 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs flex items-center justify-center gap-1.5 transition">
+                <span>🧾</span>
+                <span data-i18n="printReceipt">ព្រីនវិក័យប័ត្រ</span>
+              </button>
+            </div>
+
+            <button onclick="openCheckoutModal()" class="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-brand-600 to-emerald-600 hover:from-brand-500 hover:to-emerald-500 text-white font-extrabold text-sm shadow-lg shadow-brand-600/25 flex items-center justify-center gap-2 transition">
+              <span>💳</span>
+              <span data-i18n="checkoutBtn">គិតប្រាក់ & បិទតុ</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Mobile Sticky Bottom Cart Bar -->
+        <div class="lg:hidden fixed bottom-0 inset-x-0 z-30 p-3 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800">
+          <button onclick="toggleMobileCart(true)" class="w-full py-3 px-4 rounded-xl bg-brand-600 text-white font-bold text-sm flex items-center justify-between shadow-lg">
+            <span class="flex items-center gap-2">
+              <span>🛒</span>
+              <span data-i18n="viewCart">មើលបញ្ជីកុម្ម៉ង់</span>
+              <span id="mobile-cart-badge" class="px-2 py-0.5 rounded-full bg-white text-brand-700 text-xs font-extrabold">0</span>
+            </span>
+            <span id="mobile-cart-total" class="font-extrabold text-base">₩0</span>
+          </button>
+        </div>
+      </main>
+
+      <!-- ================================================================= -->
+      <!-- VIEW 2: 30 TABLES & QR CODE GENERATOR                             -->
+      <!-- ================================================================= -->
+      <section id="view-tables" class="view-section hidden flex-1 p-4 sm:p-6 overflow-y-auto">
+        <div class="max-w-7xl mx-auto space-y-5">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 class="text-xl sm:text-2xl font-extrabold" data-i18n="tablesTitle">គ្រប់គ្រងតុទាំង ៣០ & QR កូដ</h2>
+              <p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400" data-i18n="tablesSubtitle">ចុចលើតុដើម្បីបើកការលក់ ឬចុច QR ដើម្បីបង្ហាញ/ព្រីន QR កូដសម្រាប់ភ្ញៀវស្កេនកុម្ម៉ង់</p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2 text-xs font-semibold">
+              <span class="px-2.5 py-1.5 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">🟢 <span data-i18n="statusFree">ទំនេរ</span></span>
+              <span class="px-2.5 py-1.5 rounded-xl bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30">🔴 <span data-i18n="statusBusy">មានភ្ញៀវ</span></span>
+              <span class="px-2.5 py-1.5 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/40">🔔 <span data-i18n="statusQrNew">កុម្ម៉ង់តាម QR</span></span>
+              <button onclick="openAllQrPrintSheet()" class="px-3.5 py-2 rounded-xl bg-slate-900 dark:bg-slate-800 text-white hover:opacity-90 border border-slate-700">
+                🖨️ <span data-i18n="printAllQr">ព្រីន QR ទាំង ៣០ តុ</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Table Zone Filter Tabs (All, Regular 1-15, VIP/Round 16-22, Outdoor/Back 23-30) -->
+          <div class="flex items-center gap-2 overflow-x-auto pb-1">
+            <button onclick="setTableZoneFilter('all')" id="zone-all" class="zone-btn px-4 py-2 rounded-xl text-xs font-bold bg-brand-600 text-white">ទាំងអស់ (01-30)</button>
+            <button onclick="setTableZoneFilter('regular')" id="zone-regular" class="zone-btn px-4 py-2 rounded-xl text-xs font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">តុធម្មតា Regular (01-15)</button>
+            <button onclick="setTableZoneFilter('vip')" id="zone-vip" class="zone-btn px-4 py-2 rounded-xl text-xs font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">តុ VIP / តុមូល (16-22)</button>
+            <button onclick="setTableZoneFilter('outdoor')" id="zone-outdoor" class="zone-btn px-4 py-2 rounded-xl text-xs font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">តុខាងក្រៅ Outdoor (23-30)</button>
+          </div>
+
+          <!-- 30 Tables Grid -->
+          <div id="tables-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-3 sm:gap-4"></div>
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- VIEW 3: LIVE CUSTOMER QR ORDERS INBOX                             -->
+      <!-- ================================================================= -->
+      <section id="view-qr-orders" class="view-section hidden flex-1 p-4 sm:p-6 overflow-y-auto">
+        <div class="max-w-5xl mx-auto space-y-6">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 class="text-xl sm:text-2xl font-extrabold flex items-center gap-2">
+                <span>📲</span>
+                <span data-i18n="qrInboxTitle">ការកុម្ម៉ង់ពីអតិថិជនតាម QR Code</span>
+              </h2>
+              <p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400" data-i18n="qrInboxSubtitle">រាល់ការស្កេនកុម្ម៉ង់របស់ភ្ញៀវនឹងលោតចូលទីនេះភ្លាមៗ ដោយមានសំឡេងជូនដំណឹង</p>
+            </div>
+            <button onclick="openCustomerSimulator(currentTable)" class="px-4 py-2.5 rounded-xl bg-gold-500 hover:bg-gold-400 text-slate-950 font-bold text-xs sm:text-sm shadow-md">
+              📱 <span data-i18n="btnSimulateScan">សាកល្បងស្កេន QR កុម្ម៉ង់</span>
+            </button>
+          </div>
+
+          <div id="qr-orders-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- VIEW 4: MENU & CATEGORY MANAGEMENT                                -->
+      <!-- ================================================================= -->
+      <section id="view-menu" class="view-section hidden flex-1 p-4 sm:p-6 overflow-y-auto">
+        <div class="max-w-6xl mx-auto space-y-6">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 class="text-xl sm:text-2xl font-extrabold" data-i18n="menuMgmtTitle">គ្រប់គ្រងប្រភេទ (Category) & មុខម្ហូប</h2>
+              <p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400" data-i18n="menuMgmtSubtitle">បន្ថែម កែសម្រួល ឬលុបប្រភេទម្ហូប និងមុខម្ហូប (រក្សាទុកក្នុង Local Storage & Cloud ស្វ័យប្រវត្តិ)</p>
+            </div>
+            <button onclick="resetDemoData()" class="px-3.5 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-xs font-bold">
+              🔄 <span data-i18n="resetDefaultMenu">ស្តារទិន្នន័យដើមឡើងវិញ</span>
+            </button>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Category Manager Card -->
+            <div class="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4 h-fit">
+              <h3 class="font-bold text-base flex items-center gap-2">
+                <span>📂</span>
+                <span data-i18n="manageCategories">គ្រប់គ្រងប្រភេទម្ហូប</span>
+              </h3>
+              <form onsubmit="handleAddCategory(event)" class="space-y-2.5">
+                <input type="text" id="cat-name-km" required placeholder="ឈ្មោះភាសាខ្មែរ (ឧ. បាយឆា)" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm">
+                <input type="text" id="cat-name-en" required placeholder="English Name (e.g. Fried Rice)" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm">
+                <input type="text" id="cat-name-ko" required placeholder="한국어 이름 (예: 볶음밥)" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm">
+                <button type="submit" class="w-full py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-bold text-sm">
+                  + <span data-i18n="addCategoryBtn">បន្ថែមប្រភេទថ្មី</span>
+                </button>
+              </form>
+              <div id="admin-category-list" class="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-800"></div>
+            </div>
+
+            <!-- Add / Edit Menu Item Form + Menu List -->
+            <div class="lg:col-span-2 space-y-6">
+              <div class="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800">
+                <div class="flex items-center justify-between mb-4">
+                  <h3 class="font-bold text-base flex items-center gap-2">
+                    <span>🍽️</span>
+                    <span id="menu-form-heading" data-i18n="addMenuItemTitle">បន្ថែមមុខម្ហូបថ្មី</span>
+                  </h3>
+                  <button type="button" id="cancel-edit-menu-btn" onclick="cancelEditMenuItem()" class="hidden text-xs text-rose-500 font-bold">✕ បោះបង់ការកែប្រែ</button>
+                </div>
+                <form onsubmit="handleSaveMenuItem(event)" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <input type="hidden" id="edit-item-id" value="">
+                  <div>
+                    <label class="block text-xs font-semibold mb-1 text-slate-500">ឈ្មោះម្ហូប (ខ្មែរ)</label>
+                    <input type="text" id="item-name-km" required placeholder="ឧ. បាយឆាគ្រឿងសមុទ្រ" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm">
+                  </div>
+                  <div>
+                    <label class="block text-xs font-semibold mb-1 text-slate-500">Menu Name (English)</label>
+                    <input type="text" id="item-name-en" required placeholder="e.g. Seafood Fried Rice" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm">
+                  </div>
+                  <div>
+                    <label class="block text-xs font-semibold mb-1 text-slate-500">메뉴명 (한국어)</label>
+                    <input type="text" id="item-name-ko" required placeholder="예: 해물볶음밥" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm">
+                  </div>
+                  <div>
+                    <label class="block text-xs font-semibold mb-1 text-slate-500" data-i18n="priceKrwLabel">តម្លៃ (₩ KRW)</label>
+                    <input type="number" id="item-price" required min="500" step="500" placeholder="12000" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold">
+                  </div>
+                  <div>
+                    <label class="block text-xs font-semibold mb-1 text-slate-500" data-i18n="categorySelectLabel">ប្រភេទម្ហូប</label>
+                    <select id="item-category" required class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm"></select>
+                  </div>
+                  <div>
+                    <label class="block text-xs font-semibold mb-1 text-slate-500" data-i18n="iconOrImageLabel">រូបតំណាង (Emoji ឬ URL រូបភាព)</label>
+                    <input type="text" id="item-icon" value="🍛" placeholder="🍛 ឬ https://..." class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm">
+                  </div>
+                  <div class="sm:col-span-2 pt-1">
+                    <button type="submit" class="w-full py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-bold text-sm shadow-md">
+                      💾 <span data-i18n="saveMenuItemBtn">រក្សាទុកមុខម្ហូប</span>
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+              <!-- Existing Menu Table -->
+              <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+                <div class="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                  <h3 class="font-bold text-sm" data-i18n="allMenuItemsTitle">បញ្ជីមុខម្ហូបទាំងអស់</h3>
+                  <span id="menu-total-count" class="text-xs px-2.5 py-1 rounded-full bg-brand-500/15 text-brand-600 dark:text-emerald-400 font-bold">0</span>
+                </div>
+                <div class="overflow-x-auto">
+                  <table class="w-full text-left text-sm">
+                    <thead class="bg-slate-50 dark:bg-slate-800/70 text-xs uppercase text-slate-500">
+                      <tr>
+                        <th class="p-3">#</th>
+                        <th class="p-3" data-i18n="colItemName">មុខម្ហូប</th>
+                        <th class="p-3" data-i18n="colCategory">ប្រភេទ</th>
+                        <th class="p-3 text-right" data-i18n="colPrice">តម្លៃ (₩)</th>
+                        <th class="p-3 text-center" data-i18n="colAction">សកម្មភាព</th>
+                      </tr>
+                    </thead>
+                    <tbody id="admin-menu-tbody" class="divide-y divide-slate-200 dark:divide-slate-800"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- VIEW 5: SALES HISTORY, BEST SELLERS & PDF EXPORT                  -->
+      <!-- ================================================================= -->
+      <section id="view-analytics" class="view-section hidden flex-1 p-4 sm:p-6 overflow-y-auto">
+        <div class="max-w-7xl mx-auto space-y-6">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 class="text-xl sm:text-2xl font-extrabold" data-i18n="analyticsTitle">របាយការណ៍លក់ & មុខម្ហូបលក់ដាច់ជាងគេ</h2>
+              <p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400" data-i18n="analyticsSubtitle">តាមដានចំណូលប្រចាំថ្ងៃ ប្រវត្តិវិក័យប័ត្រ និងទាញយកជាឯកសារ PDF (គាំទ្រអក្សរខ្មែរច្បាស់ ១០០%)</p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <input type="text" id="sales-search" oninput="renderAnalytics()" placeholder="ស្វែងរកវិក័យប័ត្រ / តុ..." class="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs sm:text-sm">
+              <select id="sales-filter" onchange="renderAnalytics()" class="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs sm:text-sm font-semibold">
+                <option value="all" data-i18n="filterAllTime">ទាំងអស់ (All Time)</option>
+                <option value="today" data-i18n="filterToday">ថ្ងៃនេះ (Today)</option>
+              </select>
+              <button onclick="exportSalesPDF()" class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs sm:text-sm shadow-md flex items-center gap-2">
+                <span>📄</span>
+                <span data-i18n="exportPdfBtn">ទាញយករបាយការណ៍ PDF</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 4 KPI Summary Cards -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800">
+              <p class="text-xs font-semibold text-slate-500 dark:text-slate-400" data-i18n="kpiRevenue">ចំណូលសរុប (KRW)</p>
+              <p id="kpi-revenue" class="text-2xl font-extrabold text-brand-600 dark:text-gold-400 mt-1">₩0</p>
+            </div>
+            <div class="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800">
+              <p class="text-xs font-semibold text-slate-500 dark:text-slate-400" data-i18n="kpiOrders">ចំនួនវិក័យប័ត្រសរុប</p>
+              <p id="kpi-orders" class="text-2xl font-extrabold mt-1">0</p>
+            </div>
+            <div class="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800">
+              <p class="text-xs font-semibold text-slate-500 dark:text-slate-400" data-i18n="kpiAvg">មធ្យមភាគក្នុង ១ វិក័យប័ត្រ</p>
+              <p id="kpi-avg" class="text-2xl font-extrabold text-emerald-500 mt-1">₩0</p>
+            </div>
+            <div class="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800">
+              <p class="text-xs font-semibold text-slate-500 dark:text-slate-400" data-i18n="kpiTopDish">មុខម្ហូបលក់ដាច់បំផុត</p>
+              <p id="kpi-top-dish" class="text-base font-extrabold text-amber-500 mt-1 truncate">-</p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Top Best-Selling Dishes -->
+            <div class="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+              <h3 class="font-bold text-base flex items-center gap-2">
+                <span>🏆</span>
+                <span data-i18n="bestSellersTitle">មុខម្ហូបលក់ដាច់ជាងគេ (Top Best Sellers)</span>
+              </h3>
+              <div id="best-sellers-list" class="space-y-3"></div>
+            </div>
+
+            <!-- Sales History Table -->
+            <div class="lg:col-span-2 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+              <div class="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <h3 class="font-bold text-base" data-i18n="salesHistoryTitle">ប្រវត្តិការលក់លម្អិត</h3>
+                <button onclick="clearSalesHistory()" class="text-xs text-rose-500 hover:underline font-semibold" data-i18n="clearHistoryBtn">លុបប្រវត្តិលក់</button>
+              </div>
+              <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm">
+                  <thead class="bg-slate-50 dark:bg-slate-800/70 text-xs uppercase text-slate-500">
+                    <tr>
+                      <th class="p-3" data-i18n="colInvoice">លេខវិក័យប័ត្រ</th>
+                      <th class="p-3" data-i18n="colTable">តុ</th>
+                      <th class="p-3" data-i18n="colTime">កាលបរិច្ឆេទ</th>
+                      <th class="p-3" data-i18n="colPayment">ការទូទាត់</th>
+                      <th class="p-3 text-right" data-i18n="colTotal">សរុប (₩)</th>
+                      <th class="p-3 text-center" data-i18n="colReceipt">វិក័យប័ត្រ</th>
+                    </tr>
+                  </thead>
+                  <tbody id="sales-history-tbody" class="divide-y divide-slate-200 dark:divide-slate-800"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- VIEW 6: FIREBASE CLOUD SYNC & THERMAL PRINTER SETTINGS            -->
+      <!-- ================================================================= -->
+      <section id="view-printers" class="view-section hidden flex-1 p-4 sm:p-6 overflow-y-auto">
+        <div class="max-w-4xl mx-auto space-y-6">
+          <div>
+            <h2 class="text-xl sm:text-2xl font-extrabold" data-i18n="printerTitle">ការតភ្ជាប់ Cloud Real-time & ម៉ាស៊ីនព្រីន Thermal</h2>
+            <p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400" data-i18n="printerSubtitle">ភ្ជាប់ Firebase Realtime Database ដើម្បីឱ្យភ្ញៀវស្កេន QR កុម្ម៉ង់ឆ្លងឧបករណ៍ និងភ្ជាប់ម៉ាស៊ីនព្រីន 58mm/80mm</p>
+          </div>
+
+          <!-- Firebase Realtime Database Cloud Sync Card -->
+          <div class="bg-white dark:bg-slate-900 p-5 rounded-2xl border-2 border-brand-500/40 space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div class="flex items-center gap-3">
+                <div class="w-11 h-11 rounded-2xl bg-amber-500/15 text-amber-500 flex items-center justify-center text-xl">☁️</div>
+                <div>
+                  <h3 class="font-bold text-base">Firebase Realtime Database (Cross-Device QR Sync)</h3>
+                  <p class="text-xs text-slate-500">ភ្ជាប់ទូរស័ព្ទភ្ញៀវ និងម៉ាស៊ីនគិតលុយ Admin ក្នុងពេលជាក់ស្តែង (Real-time)</p>
+                </div>
+              </div>
+              <span id="firebase-conn-badge" class="px-3 py-1 rounded-full text-xs font-bold bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 w-fit">Local Mode</span>
+            </div>
+
+            <div class="space-y-2">
+              <label class="block text-xs font-bold text-slate-500">Firebase Realtime Database URL</label>
+              <div class="flex flex-col sm:flex-row gap-2">
+                <input type="url" id="firebase-db-url" placeholder="https://your-project-default-rtdb.asia-southeast1.firebasedatabase.app" class="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs sm:text-sm font-mono">
+                <button onclick="saveAndConnectFirebase()" class="px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-bold text-xs sm:text-sm shadow-md whitespace-nowrap">
+                  🔗 <span data-i18n="saveCloudBtn">រក្សាទុក & តភ្ជាប់ Cloud</span>
+                </button>
+              </div>
+              <p class="text-[11px] text-slate-400">
+                * នៅពេលភ្ជាប់រួច គ្រប់ QR Code ទាំង ៣០ តុនឹងបញ្ចូល Database Link នេះដោយស្វ័យប្រវត្តិ ដើម្បីឱ្យភ្ញៀវស្កេនកុម្ម៉ង់ពីទូរស័ព្ទណាក៏លោតចូលម៉ាស៊ីន Admin ភ្លាមៗ!
+              </p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- Bluetooth ESC/POS Card -->
+            <div class="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <div class="w-11 h-11 rounded-2xl bg-blue-500/15 text-blue-500 flex items-center justify-center text-xl">📶</div>
+                  <div>
+                    <h3 class="font-bold text-base">Bluetooth Thermal Printer</h3>
+                    <p class="text-xs text-slate-500">Web Bluetooth ESC/POS Direct</p>
+                  </div>
+                </div>
+                <span id="bt-status-badge" class="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400">Disconnected</span>
+              </div>
+
+              <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed" data-i18n="btDesc">
+                ភ្ជាប់ដោយផ្ទាល់ទៅម៉ាស៊ីនព្រីន Bluetooth (ដូចជា Xprinter, Rongta, Epson, Bixolon) នៅលើ Chrome / Android / Desktop។
+              </p>
+
+              <div class="flex gap-2">
+                <button onclick="connectBluetoothPrinter()" class="flex-1 py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs sm:text-sm shadow-md transition">
+                  🔗 <span data-i18n="connectBtBtn">ភ្ជាប់ Bluetooth Printer</span>
+                </button>
+                <button onclick="testThermalPrint()" class="py-2.5 px-4 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 font-bold text-xs sm:text-sm">
+                  🧾 <span data-i18n="testPrintBtn">សាកល្បងព្រីន</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Wireless / Wi-Fi / LAN Printer Card -->
+            <div class="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <div class="w-11 h-11 rounded-2xl bg-emerald-500/15 text-emerald-500 flex items-center justify-center text-xl">📡</div>
+                  <div>
+                    <h3 class="font-bold text-base">Wireless / Network Printer</h3>
+                    <p class="text-xs text-slate-500">Wi-Fi IP / AirPrint / 58mm & 80mm</p>
+                  </div>
+                </div>
+                <span class="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-500">Ready</span>
+              </div>
+
+              <div class="grid grid-cols-3 gap-2">
+                <div class="col-span-2">
+                  <label class="block text-[11px] font-semibold text-slate-500 mb-1">Printer IP Address</label>
+                  <input type="text" id="wifi-printer-ip" value="192.168.1.100" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-mono">
+                </div>
+                <div>
+                  <label class="block text-[11px] font-semibold text-slate-500 mb-1">Paper Size</label>
+                  <select id="printer-paper-size" onchange="savePrinterPrefs()" class="w-full px-2.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                    <option value="80mm">80mm</option>
+                    <option value="58mm">58mm</option>
+                  </select>
+                </div>
+              </div>
+
+              <button onclick="savePrinterPrefs(true)" class="w-full py-2.5 px-4 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-bold text-xs sm:text-sm">
+                💾 <span data-i18n="savePrinterSettings">រក្សាទុកការកំណត់ Wireless</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Shop Receipt Header Info -->
+          <div class="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+            <h3 class="font-bold text-base" data-i18n="shopInfoTitle">ព័ត៌មានហាងលើវិក័យប័ត្រ</h3>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label class="block text-xs font-semibold text-slate-500 mb-1" data-i18n="shopNameLabel">ឈ្មោះហាង</label>
+                <input type="text" id="shop-name-input" value="SKY RESTAURANT & PUB" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm">
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-500 mb-1" data-i18n="shopAddressLabel">អាសយដ្ឋាន</label>
+                <input type="text" id="shop-address-input" value="Pocheon-si, Gyeonggi-do, Korea" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm">
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-500 mb-1" data-i18n="shopPhoneLabel">លេខទូរស័ព្ទ</label>
+                <input type="text" id="shop-phone-input" value="010-1234-5678" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm">
+              </div>
+            </div>
+            <button onclick="saveShopInfo()" class="px-5 py-2.5 rounded-xl bg-slate-900 dark:bg-slate-800 text-white font-bold text-xs sm:text-sm border border-slate-700">
+              ✅ <span data-i18n="saveShopBtn">រក្សាទុកព័ត៌មានហាង</span>
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- 2. CUSTOMER MOBILE QR SELF-ORDERING VIEW (FULL OVERLAY / URL MODE)    -->
+  <!-- ===================================================================== -->
+  <div id="customer-qr-app" class="hidden fixed inset-0 z-[80] bg-slate-50 dark:bg-slate-950 flex flex-col overflow-hidden">
+    <!-- Customer Header -->
+    <div class="bg-brand-950 text-white px-4 py-3.5 flex items-center justify-between shadow-md shrink-0">
+      <div class="flex items-center gap-2.5">
+        <div class="w-9 h-9 rounded-xl bg-gold-500 text-slate-950 font-extrabold flex items-center justify-center">SK</div>
+        <div>
+          <h2 class="font-extrabold text-sm sm:text-base flex items-center gap-2">
+            <span id="cust-shop-title">Sky Restaurant</span>
+            <span class="px-2 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 text-xs font-bold">
+              <span data-i18n="tableLabel">តុទី</span> <span id="cust-table-badge">01</span>
+            </span>
+          </h2>
+          <p class="text-[11px] text-emerald-200/80" data-i18n="custWelcome">សូមជ្រើសរើសមុខម្ហូបខាងក្រោមដើម្បីកុម្ម៉ង់</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <!-- Customer Language Switcher -->
+        <div class="flex items-center bg-white/10 p-0.5 rounded-lg">
+          <button onclick="setLanguage('km')" class="cust-lang-btn px-2 py-1 rounded text-[11px] font-bold">ខ្មែរ</button>
+          <button onclick="setLanguage('en')" class="cust-lang-btn px-2 py-1 rounded text-[11px] font-bold">EN</button>
+          <button onclick="setLanguage('ko')" class="cust-lang-btn px-2 py-1 rounded text-[11px] font-bold">한국어</button>
+        </div>
+        <button id="cust-exit-admin-btn" onclick="closeCustomerSimulator()" class="px-2.5 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-xs font-bold">
+          ✕ <span class="hidden sm:inline">Admin</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Table Info Bar -->
+    <div class="bg-amber-500/15 border-b border-amber-500/30 px-4 py-2 flex items-center justify-between text-xs shrink-0">
+      <span class="font-semibold text-amber-800 dark:text-amber-300" data-i18n="custTableSelectHint">កំពុងកុម្ម៉ង់សម្រាប់តុ៖</span>
+      <select id="cust-table-select" onchange="changeCustomerTable(this.value)" class="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-amber-400 font-bold text-xs"></select>
+    </div>
+
+    <!-- Customer Categories -->
+    <div id="cust-categories" class="flex items-center gap-2 overflow-x-auto px-4 py-3 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shrink-0"></div>
+
+    <!-- Customer Menu List -->
+    <div id="cust-menu-grid" class="flex-1 overflow-y-auto p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pb-28"></div>
+
+    <!-- Customer Bottom Cart & Submit Bar -->
+    <div class="p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 shadow-2xl shrink-0">
+      <div class="max-w-3xl mx-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+        <input type="text" id="cust-order-note" data-i18n-placeholder="custNotePlaceholder" placeholder="កំណត់សម្គាល់បន្ថែម (ឧ. មិនដាក់ម្ទេស)..." class="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs sm:text-sm">
+        <button id="cust-submit-btn" onclick="submitCustomerQrOrder()" class="py-3 px-6 rounded-xl bg-gradient-to-r from-brand-600 to-emerald-600 hover:from-brand-500 hover:to-emerald-500 text-white font-extrabold text-sm shadow-lg flex items-center justify-center gap-3">
+          <span>🚀 <span data-i18n="custSendOrderBtn">បញ្ជូនការកុម្ម៉ង់ទៅផ្ទះបាយ</span></span>
+          <span id="cust-cart-summary" class="px-2.5 py-0.5 rounded-lg bg-black/25 font-extrabold">0 • ₩0</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- 3. MODALS (CHECKOUT, QR DISPLAY, RECEIPT PREVIEW)                     -->
+  <!-- ===================================================================== -->
+
+  <!-- Checkout Payment Modal -->
+  <div id="checkout-modal" class="hidden fixed inset-0 z-50 bg-black/65 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl border border-slate-200 dark:border-slate-800 p-6 space-y-5 shadow-2xl">
+      <div class="flex items-center justify-between">
+        <h3 class="text-lg font-extrabold" data-i18n="checkoutModalTitle">ទូទាត់ប្រាក់ (KRW)</h3>
+        <button onclick="closeModal('checkout-modal')" class="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-sm font-bold">✕</button>
+      </div>
+
+      <div class="p-4 rounded-2xl bg-brand-50 dark:bg-brand-950/60 border border-brand-200 dark:border-brand-800 text-center">
+        <p class="text-xs text-slate-500 dark:text-emerald-300/80" data-i18n="amountDueLabel">ទឹកប្រាក់ត្រូវបង់សរុប</p>
+        <p id="checkout-due-amount" class="text-3xl font-extrabold text-brand-700 dark:text-gold-400 mt-1">₩0</p>
+      </div>
+
+      <!-- Payment Method -->
+      <div>
+        <label class="block text-xs font-bold text-slate-500 mb-2" data-i18n="paymentMethodLabel">វិធីសាស្ត្រទូទាត់</label>
+        <div class="grid grid-cols-3 gap-2">
+          <button type="button" onclick="selectPaymentMethod('Cash')" id="pay-Cash" class="pay-method-btn py-2.5 px-2 rounded-xl border-2 border-brand-600 bg-brand-600/10 text-brand-600 dark:text-emerald-400 font-bold text-xs">💵 Cash (សាច់ប្រាក់)</button>
+          <button type="button" onclick="selectPaymentMethod('Card')" id="pay-Card" class="pay-method-btn py-2.5 px-2 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-xs">💳 Card (កាត)</button>
+          <button type="button" onclick="selectPaymentMethod('QR / Transfer')" id="pay-QR / Transfer" class="pay-method-btn py-2.5 px-2 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-xs">📱 QR / Bank</button>
+        </div>
+      </div>
+
+      <!-- Cash Received & Change Calculator -->
+      <div id="cash-calc-box" class="space-y-2">
+        <label class="block text-xs font-bold text-slate-500" data-i18n="cashReceivedLabel">ប្រាក់ទទួលពីភ្ញៀវ (₩)</label>
+        <input type="number" id="cash-received-input" oninput="calculateChange()" class="w-full px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-extrabold text-lg">
+        <div class="flex gap-1.5 flex-wrap">
+          <button type="button" onclick="setQuickCash(10000)" class="px-2.5 py-1 rounded-lg bg-slate-200 dark:bg-slate-800 text-xs font-bold">₩10,000</button>
+          <button type="button" onclick="setQuickCash(20000)" class="px-2.5 py-1 rounded-lg bg-slate-200 dark:bg-slate-800 text-xs font-bold">₩20,000</button>
+          <button type="button" onclick="setQuickCash(50000)" class="px-2.5 py-1 rounded-lg bg-slate-200 dark:bg-slate-800 text-xs font-bold">₩50,000</button>
+          <button type="button" onclick="setQuickCash(100000)" class="px-2.5 py-1 rounded-lg bg-slate-200 dark:bg-slate-800 text-xs font-bold">₩100,000</button>
+        </div>
+        <div class="flex justify-between items-center pt-2 text-sm font-bold">
+          <span data-i18n="changeReturnLabel">ប្រាក់អាប់ជូនភ្ញៀវ៖</span>
+          <span id="checkout-change-amount" class="text-emerald-500 text-lg">₩0</span>
+        </div>
+      </div>
+
+      <button onclick="completeCheckout()" class="w-full py-3.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-extrabold text-sm shadow-lg">
+        ✅ <span data-i18n="confirmPaidPrintBtn">បញ្ជាក់ការទូទាត់ & ព្រីនវិក័យប័ត្រ</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Table QR Code Modal -->
+  <div id="qr-modal" class="hidden fixed inset-0 z-50 bg-black/65 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl border border-slate-200 dark:border-slate-800 p-6 text-center space-y-4 shadow-2xl">
+      <div class="flex items-center justify-between">
+        <span class="px-3 py-1 rounded-full bg-brand-600 text-white text-xs font-extrabold">
+          <span data-i18n="tableLabel">តុទី</span> <span id="qr-modal-table-num">01</span>
+        </span>
+        <button onclick="closeModal('qr-modal')" class="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-sm font-bold">✕</button>
+      </div>
+
+      <h3 class="font-extrabold text-lg" data-i18n="scanToOrderTitle">ស្កេន QR កូដដើម្បីកុម្ម៉ង់ម្ហូប</h3>
+      <p class="text-xs text-slate-500">Scan with Phone Camera (KH / EN / KR)</p>
+
+      <div class="p-4 bg-white rounded-2xl inline-block border-4 border-brand-600 shadow-inner">
+        <div id="qrcode-canvas-box" class="flex items-center justify-center"></div>
+      </div>
+
+      <div class="grid grid-cols-3 gap-2 pt-2">
+        <button onclick="downloadTableQrPng()" class="py-2.5 px-2 rounded-xl bg-emerald-600 text-white font-bold text-xs">
+          ⬇️ PNG
+        </button>
+        <button onclick="printSingleTableQr()" class="py-2.5 px-2 rounded-xl bg-slate-900 dark:bg-slate-800 text-white font-bold text-xs">
+          🖨️ <span data-i18n="printQrBtn">ព្រីន</span>
+        </button>
+        <button onclick="launchSimulatorFromQrModal()" class="py-2.5 px-2 rounded-xl bg-gold-500 text-slate-950 font-bold text-xs">
+          📱 <span data-i18n="openMenuPreviewBtn">សាកស្កេន</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Receipt / Kitchen Ticket Preview Modal -->
+  <div id="receipt-modal" class="hidden fixed inset-0 z-50 bg-black/65 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl border border-slate-200 dark:border-slate-800 p-5 space-y-4 shadow-2xl">
+      <div class="flex items-center justify-between">
+        <h3 class="font-extrabold text-base" id="receipt-modal-title">វិក័យប័ត្រ (Thermal Preview)</h3>
+        <button onclick="closeModal('receipt-modal')" class="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-sm font-bold">✕</button>
+      </div>
+
+      <!-- Simulated 80mm Paper Receipt -->
+      <div id="receipt-preview-paper" class="bg-white text-slate-900 p-4 rounded-xl border border-slate-300 font-mono text-xs leading-relaxed max-h-[60vh] overflow-y-auto shadow-inner"></div>
+
+      <div class="grid grid-cols-2 gap-2">
+        <button onclick="executeThermalPrint()" class="py-3 px-4 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-md">
+          <span>🖨️</span>
+          <span data-i18n="printNowBtn">បោះពុម្ពឥឡូវនេះ</span>
+        </button>
+        <button onclick="closeModal('receipt-modal')" class="py-3 px-4 rounded-xl bg-slate-200 dark:bg-slate-800 font-bold text-xs sm:text-sm">
+          <span data-i18n="closeBtn">បិទ</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- JAVASCRIPT APPLICATION LOGIC                                          -->
+  <!-- ===================================================================== -->
+  <script>
+    // =========================================================================
+    // 1. TRILINGUAL DICTIONARY (KHMER / ENGLISH / KOREAN)
+    // =========================================================================
+    const I18N = {
+      km: {
+        brandSubtitle: "ប្រព័ន្ធគ្រប់គ្រងភោជនីយដ្ឋាន",
+        navPos: "បញ្ជរលក់ (POS Terminal)",
+        navTables: "តុទាំង ៣០ & QR កូដ",
+        navQrOrders: "ការកុម្ម៉ង់ពីភ្ញៀវ (QR)",
+        navMenu: "គ្រប់គ្រងមុខម្ហូប & ប្រភេទ",
+        navAnalytics: "ប្រវត្តិលក់ & ម្ហូបលក់ដាច់",
+        navPrinters: "Cloud & ម៉ាស៊ីនព្រីន",
+        qrSimHint: "សាកល្បងអតិថិជនស្កេន QR កុម្ម៉ង់ម្ហូប៖",
+        btnSimulateScan: "បើកផ្ទាំងភ្ញៀវស្កេន QR",
+        tableLabel: "តុទី",
+        newQrOrderShort: "ការកុម្ម៉ង់ថ្មី!",
+        searchPlaceholder: "ស្វែងរកមុខម្ហូប...",
+        showTableQr: "QR តុនេះ",
+        simScanShort: "សាកស្កេន",
+        currentOrder: "បញ្ជីកុម្ម៉ង់បច្ចុប្បន្ន",
+        clearCart: "សម្អាត",
+        includeVat: "បូកពន្ធ VAT (10%)",
+        discountLabel: "បញ្ចុះតម្លៃ:",
+        discountShort: "បញ្ចុះតម្លៃ",
+        subtotal: "សរុបរង",
+        grandTotal: "សរុបត្រូវបង់",
+        printKitchen: "ព្រីនទៅផ្ទះបាយ (KOT)",
+        printReceipt: "ព្រីនវិក័យប័ត្រ",
+        checkoutBtn: "គិតប្រាក់ & បិទតុ",
+        viewCart: "មើលបញ្ជីកុម្ម៉ង់",
+        tablesTitle: "គ្រប់គ្រងតុទាំង ៣០ & QR កូដ",
+        tablesSubtitle: "ចុចលើតុដើម្បីបើកការលក់ ឬចុច QR ដើម្បីបង្ហាញ/ព្រីន QR កូដសម្រាប់ភ្ញៀវស្កេនកុម្ម៉ង់",
+        statusFree: "ទំនេរ",
+        statusBusy: "មានភ្ញៀវ",
+        statusQrNew: "កុម្ម៉ង់តាម QR",
+        printAllQr: "ព្រីន QR ទាំង ៣០ តុ",
+        qrInboxTitle: "ការកុម្ម៉ង់ពីអតិថិជនតាម QR Code",
+        qrInboxSubtitle: "រាល់ការស្កេនកុម្ម៉ង់របស់ភ្ញៀវនឹងលោតចូលទីនេះភ្លាមៗ ដោយមានសំឡេងជូនដំណឹង",
+        menuMgmtTitle: "គ្រប់គ្រងប្រភេទ (Category) & មុខម្ហូប",
+        menuMgmtSubtitle: "បន្ថែម កែសម្រួល ឬលុបប្រភេទម្ហូប និងមុខម្ហូប (រក្សាទុកក្នុង Local Storage & Cloud ស្វ័យប្រវត្តិ)",
+        resetDefaultMenu: "ស្តារទិន្នន័យដើមឡើងវិញ",
+        manageCategories: "គ្រប់គ្រងប្រភេទម្ហូប",
+        addCategoryBtn: "បន្ថែមប្រភេទថ្មី",
+        addMenuItemTitle: "បន្ថែមមុខម្ហូបថ្មី",
+        priceKrwLabel: "តម្លៃ (₩ KRW)",
+        categorySelectLabel: "ប្រភេទម្ហូប",
+        iconOrImageLabel: "រូបតំណាង (Emoji ឬ URL រូបភាព)",
+        saveMenuItemBtn: "រក្សាទុកមុខម្ហូប",
+        allMenuItemsTitle: "បញ្ជីមុខម្ហូបទាំងអស់",
+        colItemName: "មុខម្ហូប",
+        colCategory: "ប្រភេទ",
+        colPrice: "តម្លៃ (₩)",
+        colAction: "សកម្មភាព",
+        analyticsTitle: "របាយការណ៍លក់ & មុខម្ហូបលក់ដាច់ជាងគេ",
+        analyticsSubtitle: "តាមដានចំណូលប្រចាំថ្ងៃ ប្រវត្តិវិក័យប័ត្រ និងទាញយកជាឯកសារ PDF",
+        filterAllTime: "ទាំងអស់ (All Time)",
+        filterToday: "ថ្ងៃនេះ (Today)",
+        exportPdfBtn: "ទាញយករបាយការណ៍ PDF",
+        kpiRevenue: "ចំណូលសរុប (KRW)",
+        kpiOrders: "ចំនួនវិក័យប័ត្រសរុប",
+        kpiAvg: "មធ្យមភាគក្នុង ១ វិក័យប័ត្រ",
+        kpiTopDish: "មុខម្ហូបលក់ដាច់បំផុត",
+        bestSellersTitle: "មុខម្ហូបលក់ដាច់ជាងគេ (Top Best Sellers)",
+        salesHistoryTitle: "ប្រវត្តិការលក់លម្អិត",
+        clearHistoryBtn: "លុបប្រវត្តិលក់",
+        colInvoice: "លេខវិក័យប័ត្រ",
+        colTable: "តុ",
+        colTime: "កាលបរិច្ឆេទ",
+        colPayment: "ការទូទាត់",
+        colTotal: "សរុប (₩)",
+        colReceipt: "វិក័យប័ត្រ",
+        printerTitle: "ការតភ្ជាប់ Cloud Real-time & ម៉ាស៊ីនព្រីន Thermal",
+        printerSubtitle: "ភ្ជាប់ Firebase Realtime Database ដើម្បីឱ្យភ្ញៀវស្កេន QR កុម្ម៉ង់ឆ្លងឧបករណ៍ និងភ្ជាប់ម៉ាស៊ីនព្រីន 58mm/80mm",
+        saveCloudBtn: "រក្សាទុក & តភ្ជាប់ Cloud",
+        btDesc: "ភ្ជាប់ដោយផ្ទាល់ទៅម៉ាស៊ីនព្រីន Bluetooth (ដូចជា Xprinter, Rongta, Epson, Bixolon) នៅលើ Chrome / Android / Desktop។",
+        connectBtBtn: "ភ្ជាប់ Bluetooth Printer",
+        testPrintBtn: "សាកល្បងព្រីន",
+        savePrinterSettings: "រក្សាទុកការកំណត់ Wireless",
+        shopInfoTitle: "ព័ត៌មានហាងលើវិក័យប័ត្រ",
+        shopNameLabel: "ឈ្មោះហាង",
+        shopAddressLabel: "អាសយដ្ឋាន",
+        shopPhoneLabel: "លេខទូរស័ព្ទ",
+        saveShopBtn: "រក្សាទុកព័ត៌មានហាង",
+        custWelcome: "សូមជ្រើសរើសមុខម្ហូបខាងក្រោមដើម្បីកុម្ម៉ង់",
+        custTableSelectHint: "កំពុងកុម្ម៉ង់សម្រាប់តុ៖",
+        custNotePlaceholder: "កំណត់សម្គាល់បន្ថែម (ឧ. មិនដាក់ម្ទេស)...",
+        custSendOrderBtn: "បញ្ជូនការកុម្ម៉ង់ទៅផ្ទះបាយ",
+        checkoutModalTitle: "ទូទាត់ប្រាក់ (KRW)",
+        amountDueLabel: "ទឹកប្រាក់ត្រូវបង់សរុប",
+        paymentMethodLabel: "វិធីសាស្ត្រទូទាត់",
+        cashReceivedLabel: "ប្រាក់ទទួលពីភ្ញៀវ (₩)",
+        changeReturnLabel: "ប្រាក់អាប់ជូនភ្ញៀវ៖",
+        confirmPaidPrintBtn: "បញ្ជាក់ការទូទាត់ & ព្រីនវិក័យប័ត្រ",
+        scanToOrderTitle: "ស្កេន QR កូដដើម្បីកុម្ម៉ង់ម្ហូប",
+        printQrBtn: "ព្រីន",
+        openMenuPreviewBtn: "សាកស្កេន",
+        printNowBtn: "បោះពុម្ពឥឡូវនេះ",
+        closeBtn: "បិទ",
+        allCat: "ទាំងអស់",
+        emptyCart: "មិនទាន់មានមុខម្ហូបក្នុងបញ្ជីទេ",
+        acceptQrBtn: "ទទួល & បញ្ចូលទៅតុ + KOT",
+        rejectQrBtn: "បដិសេធ",
+        noQrOrders: "មិនទាន់មានការកុម្ម៉ង់ថ្មីតាម QR នៅឡើយទេ",
+        noSalesYet: "មិនទាន់មានទិន្នន័យលក់នៅឡើយទេ"
+      },
+      en: {
+        brandSubtitle: "Restaurant POS System",
+        navPos: "POS Terminal",
+        navTables: "30 Tables & QR Codes",
+        navQrOrders: "Live QR Orders",
+        navMenu: "Menu & Categories",
+        navAnalytics: "Sales History & Top Items",
+        navPrinters: "Cloud & Thermal Printer",
+        qrSimHint: "Test Customer QR Self-Ordering:",
+        btnSimulateScan: "Open Customer QR Menu",
+        tableLabel: "Table",
+        newQrOrderShort: "New QR Order!",
+        searchPlaceholder: "Search menu items...",
+        showTableQr: "Table QR",
+        simScanShort: "Scan Sim",
+        currentOrder: "Current Order",
+        clearCart: "Clear",
+        includeVat: "Include VAT (10%)",
+        discountLabel: "Discount:",
+        discountShort: "Discount",
+        subtotal: "Subtotal",
+        grandTotal: "Grand Total",
+        printKitchen: "Send to Kitchen (KOT)",
+        printReceipt: "Print Bill",
+        checkoutBtn: "Checkout & Close Table",
+        viewCart: "View Order",
+        tablesTitle: "30 Tables & QR Code Management",
+        tablesSubtitle: "Tap any table to take orders, or tap QR to show/print table QR code",
+        statusFree: "Available",
+        statusBusy: "Occupied",
+        statusQrNew: "New QR Order",
+        printAllQr: "Print All 30 Table QRs",
+        qrInboxTitle: "Incoming Customer QR Orders",
+        qrInboxSubtitle: "Orders scanned by guests at tables appear here in real time with sound alert",
+        menuMgmtTitle: "Menu & Category Management",
+        menuMgmtSubtitle: "Add, edit, or delete categories and dishes (Saved in Local Storage & Cloud)",
+        resetDefaultMenu: "Reset Default Menu",
+        manageCategories: "Manage Categories",
+        addCategoryBtn: "Add Category",
+        addMenuItemTitle: "Add New Dish",
+        priceKrwLabel: "Price (₩ KRW)",
+        categorySelectLabel: "Category",
+        iconOrImageLabel: "Icon (Emoji or Image URL)",
+        saveMenuItemBtn: "Save Dish",
+        allMenuItemsTitle: "All Menu Items",
+        colItemName: "Dish Name",
+        colCategory: "Category",
+        colPrice: "Price (₩)",
+        colAction: "Action",
+        analyticsTitle: "Sales Analytics & Best-Selling Dishes",
+        analyticsSubtitle: "Track revenue, inspect receipts, and export PDF sales reports",
+        filterAllTime: "All Time",
+        filterToday: "Today",
+        exportPdfBtn: "Export Sales PDF",
+        kpiRevenue: "Total Revenue (KRW)",
+        kpiOrders: "Total Completed Orders",
+        kpiAvg: "Average Order Value",
+        kpiTopDish: "Top Selling Dish",
+        bestSellersTitle: "Top Best-Selling Dishes",
+        salesHistoryTitle: "Sales History",
+        clearHistoryBtn: "Clear History",
+        colInvoice: "Invoice #",
+        colTable: "Table",
+        colTime: "Date & Time",
+        colPayment: "Payment",
+        colTotal: "Total (₩)",
+        colReceipt: "Receipt",
+        printerTitle: "Cloud Real-time Sync & Thermal Printer Setup",
+        printerSubtitle: "Connect Firebase Realtime Database for cross-device QR ordering & 58mm/80mm printers",
+        saveCloudBtn: "Save & Connect Cloud",
+        btDesc: "Pair directly with Bluetooth thermal printers (Xprinter, Rongta, Epson) via Web Bluetooth.",
+        connectBtBtn: "Connect Bluetooth Printer",
+        testPrintBtn: "Test Print",
+        savePrinterSettings: "Save Wireless Settings",
+        shopInfoTitle: "Receipt Header Information",
+        shopNameLabel: "Restaurant Name",
+        shopAddressLabel: "Address",
+        shopPhoneLabel: "Phone Number",
+        saveShopBtn: "Save Shop Info",
+        custWelcome: "Browse the menu below to order directly from your table",
+        custTableSelectHint: "Ordering for Table:",
+        custNotePlaceholder: "Add kitchen note (e.g. No spicy)...",
+        custSendOrderBtn: "Send Order to Kitchen",
+        checkoutModalTitle: "Settle Payment (KRW)",
+        amountDueLabel: "Total Amount Due",
+        paymentMethodLabel: "Payment Method",
+        cashReceivedLabel: "Cash Received (₩)",
+        changeReturnLabel: "Change Return:",
+        confirmPaidPrintBtn: "Confirm Payment & Print Receipt",
+        scanToOrderTitle: "Scan QR Code to Order",
+        printQrBtn: "Print",
+        openMenuPreviewBtn: "Simulate",
+        printNowBtn: "Print Now",
+        closeBtn: "Close",
+        allCat: "All",
+        emptyCart: "No items in this table's order yet",
+        acceptQrBtn: "Accept & Add to Table + KOT",
+        rejectQrBtn: "Dismiss",
+        noQrOrders: "No pending customer QR orders right now",
+        noSalesYet: "No completed sales recorded yet"
+      },
+      ko: {
+        brandSubtitle: "레스토랑 포스 시스템",
+        navPos: "포스 주문 (POS)",
+        navTables: "30개 테이블 & QR코드",
+        navQrOrders: "실시간 QR 주문",
+        navMenu: "메뉴 & 카테고리 관리",
+        navAnalytics: "매출 내역 & 인기 메뉴",
+        navPrinters: "클라우드 & 프린터 설정",
+        qrSimHint: "손님 QR 셀프 주문 테스트:",
+        btnSimulateScan: "손님 QR 주문 화면 열기",
+        tableLabel: "테이블",
+        newQrOrderShort: "새 QR 주문!",
+        searchPlaceholder: "메뉴 검색...",
+        showTableQr: "테이블 QR",
+        simScanShort: "스캔 테스트",
+        currentOrder: "현재 주문 내역",
+        clearCart: "비우기",
+        includeVat: "부가세 포함 (10%)",
+        discountLabel: "할인:",
+        discountShort: "할인",
+        subtotal: "소계",
+        grandTotal: "총 결제금액",
+        printKitchen: "주방 주문서 (KOT)",
+        printReceipt: "영수증 출력",
+        checkoutBtn: "결제 및 테이블 마감",
+        viewCart: "주문서 보기",
+        tablesTitle: "30개 테이블 및 QR 코드 관리",
+        tablesSubtitle: "테이블을 클릭하여 주문하거나 QR 아이콘을 눌러 테이블 QR을 인쇄하세요",
+        statusFree: "빈 테이블",
+        statusBusy: "이용중",
+        statusQrNew: "새 QR 주문",
+        printAllQr: "전체 30개 QR 인쇄",
+        qrInboxTitle: "손님 QR 셀프 주문 접수함",
+        qrInboxSubtitle: "테이블에서 손님이 QR을 스캔해 주문하면 알림음과 함께 즉시 표시됩니다",
+        menuMgmtTitle: "메뉴 및 카테고리 관리",
+        menuMgmtSubtitle: "카테고리와 메뉴를 추가/수정/삭제할 수 있습니다 (로컬 및 클라우드 저장)",
+        resetDefaultMenu: "기본 메뉴 초기화",
+        manageCategories: "카테고리 관리",
+        addCategoryBtn: "카테고리 추가",
+        addMenuItemTitle: "새 메뉴 추가",
+        priceKrwLabel: "가격 (₩ 원)",
+        categorySelectLabel: "카테고리",
+        iconOrImageLabel: "아이콘 (이모지 또는 이미지 URL)",
+        saveMenuItemBtn: "메뉴 저장",
+        allMenuItemsTitle: "전체 메뉴 목록",
+        colItemName: "메뉴명",
+        colCategory: "카테고리",
+        colPrice: "가격 (₩)",
+        colAction: "관리",
+        analyticsTitle: "매출 분석 및 베스트셀러 메뉴",
+        analyticsSubtitle: "매출 현황, 영수증 내역을 확인하고 PDF 보고서를 다운로드하세요",
+        filterAllTime: "전체 기간",
+        filterToday: "오늘 매출",
+        exportPdfBtn: "매출 PDF 다운로드",
+        kpiRevenue: "총 매출액 (KRW)",
+        kpiOrders: "총 주문 건수",
+        kpiAvg: "평균 객단가",
+        kpiTopDish: "최고 인기 메뉴",
+        bestSellersTitle: "인기 판매 메뉴 TOP",
+        salesHistoryTitle: "상세 결제 내역",
+        clearHistoryBtn: "내역 초기화",
+        colInvoice: "영수증 번호",
+        colTable: "테이블",
+        colTime: "결제 일시",
+        colPayment: "결제 수단",
+        colTotal: "합계 (₩)",
+        colReceipt: "영수증",
+        printerTitle: "클라우드 실시간 동기화 및 영수증 프린터 설정",
+        printerSubtitle: "Firebase 실시간 데이터베이스로 손님 QR 주문을 연동하고 58mm/80mm 프린터를 설정합니다",
+        saveCloudBtn: "저장 및 클라우드 연결",
+        btDesc: "Chrome/Android 환경에서 블루투스 영수증 프린터와 직접 연결합니다.",
+        connectBtBtn: "블루투스 프린터 연결",
+        testPrintBtn: "테스트 출력",
+        savePrinterSettings: "무선 프린터 설정 저장",
+        shopInfoTitle: "영수증 상단 매장 정보",
+        shopNameLabel: "상호명",
+        shopAddressLabel: "주소",
+        shopPhoneLabel: "전화번호",
+        saveShopBtn: "매장 정보 저장",
+        custWelcome: "원하시는 메뉴를 선택하여 주문해 주세요",
+        custTableSelectHint: "주문 테이블 번호:",
+        custNotePlaceholder: "요청사항 입력 (예: 덜 맵게 해주세요)...",
+        custSendOrderBtn: "주방으로 주문 전송",
+        checkoutModalTitle: "결제 처리 (원화 KRW)",
+        amountDueLabel: "총 결제하실 금액",
+        paymentMethodLabel: "결제 수단 선택",
+        cashReceivedLabel: "받은 현금 (₩)",
+        changeReturnLabel: "거스름돈:",
+        confirmPaidPrintBtn: "결제 완료 및 영수증 출력",
+        scanToOrderTitle: "QR 코드를 스캔하여 주문하세요",
+        printQrBtn: "인쇄",
+        openMenuPreviewBtn: "스캔 테스트",
+        printNowBtn: "지금 인쇄하기",
+        closeBtn: "닫기",
+        allCat: "전체",
+        emptyCart: "선택된 메뉴가 없습니다",
+        acceptQrBtn: "주문 수락 및 주방 출력",
+        rejectQrBtn: "거절",
+        noQrOrders: "대기 중인 QR 주문이 없습니다",
+        noSalesYet: "기록된 매출 내역이 없습니다"
+      }
+    };
+
+    // =========================================================================
+    // 2. DEFAULT DATA & STATE (LOCAL STORAGE + FIREBASE CLOUD SYNC)
+    // =========================================================================
+    const STORAGE_KEYS = {
+      LANG: 'skypos_lang',
+      THEME: 'skypos_theme',
+      CATEGORIES: 'skypos_categories',
+      MENU: 'skypos_menu',
+      TABLE_CARTS: 'skypos_table_carts',
+      QR_ORDERS: 'skypos_qr_orders',
+      SALES: 'skypos_sales',
+      SHOP: 'skypos_shop',
+      PRINTER: 'skypos_printer',
+      FIREBASE_URL: 'skypos_firebase_url'
+    };
+
+    const DEFAULT_CATEGORIES = [
+      { id: 'cat-rice', km: 'បាយឆា & មី', en: 'Fried Rice & Noodles', ko: '볶음밥 & 면류' },
+      { id: 'cat-soup', km: 'សម្លរ & ស៊ុប', en: 'Soups & Stews', ko: '국물 & 찌개' },
+      { id: 'cat-snack', km: 'អាហារសម្រន់ & ក្លែម', en: 'Snacks & Grill', ko: '안주 & 구이' },
+      { id: 'cat-drink', km: 'ភេសជ្ជះ', en: 'Beverages', ko: '음료' },
+      { id: 'cat-beer', km: 'ស្រាបៀរ & ស្រា', en: 'Beer & Soju', ko: '맥주 & 소주' }
+    ];
+
+    const DEFAULT_MENU = [
+      { id: 'm1', catId: 'cat-rice', km: 'បាយឆាគ្រឿងសមុទ្រ', en: 'Seafood Fried Rice', ko: '해물볶음밥', price: 11000, icon: '🦐' },
+      { id: 'm2', catId: 'cat-rice', km: 'បាយឆាសាច់គោឡុកឡាក់', en: 'Beef Lok Lak Rice', ko: '소고기 록락 덮밥', price: 13000, icon: '🥩' },
+      { id: 'm3', catId: 'cat-rice', km: 'មីឆាសាច់គោ', en: 'Stir-Fried Beef Noodles', ko: '소고기 볶음면', price: 10000, icon: '🍜' },
+      { id: 'm4', catId: 'cat-soup', km: 'សម្លម្ជូរគ្រឿងសាច់គោ', en: 'Khmer Sour Beef Soup', ko: '크메르 소고기 매운탕', price: 15000, icon: '🍲' },
+      { id: 'm5', catId: 'cat-soup', km: 'តុងយ៉ាំគ្រឿងសមុទ្រ', en: 'Tom Yum Seafood', ko: '해물 똠얌꿍', price: 16000, icon: '🥘' },
+      { id: 'm6', catId: 'cat-snack', km: 'មាន់អាំងទឹកឃ្មុំ', en: 'Honey Grilled Chicken', ko: '허니 통닭구이', price: 18000, icon: '🍗' },
+      { id: 'm7', catId: 'cat-snack', km: 'ភ្លាសាច់គោ', en: 'Khmer Beef Salad', ko: '소고기 샐러드 무침', price: 14000, icon: '🥗' },
+      { id: 'm8', catId: 'cat-snack', km: 'ប្រហិតចៀនចម្រុះ', en: 'Mixed Fried Meatballs', ko: '모듬 어묵 튀김', price: 9000, icon: '🍢' },
+      { id: 'm9', catId: 'cat-drink', km: 'កាហ្វេទឹកដោះគោទឹកកក', en: 'Iced Milk Coffee', ko: '아이스 연유 커피', price: 4500, icon: '🧋' },
+      { id: 'm10', catId: 'cat-drink', km: 'តែក្រូចឆ្មារទឹកកក', en: 'Iced Lemon Tea', ko: '아이스 레몬티', price: 4000, icon: '🍹' },
+      { id: 'm11', catId: 'cat-beer', km: 'ស្រាបៀរអង្គរ (កំប៉ុង)', en: 'Angkor Beer Can', ko: '앙코르 맥주', price: 5000, icon: '🍺' },
+      { id: 'm12', catId: 'cat-beer', km: 'ស្រាសូជូកូរ៉េ', en: 'Korean Soju', ko: '참이슬 소주', price: 5000, icon: '🍾' }
+    ];
+
+    let currentLang = localStorage.getItem(STORAGE_KEYS.LANG) || 'km';
+    let currentTable = 1;
+    let selectedPosCategory = 'all';
+    let selectedCustCategory = 'all';
+    let selectedTableZone = 'all';
+    let selectedPaymentMethod = 'Cash';
+    let qrModalActiveTable = 1;
+    let custCart = [];
+    let bluetoothDevice = null;
+    let bluetoothCharacteristic = null;
+    let isCustomerStandaloneMode = false;
+
+    let categories = JSON.parse(localStorage.getItem(STORAGE_KEYS.CATEGORIES)) || DEFAULT_CATEGORIES;
+    let menuItems = JSON.parse(localStorage.getItem(STORAGE_KEYS.MENU)) || DEFAULT_MENU;
+    let tableCarts = JSON.parse(localStorage.getItem(STORAGE_KEYS.TABLE_CARTS)) || {};
+    let qrOrders = JSON.parse(localStorage.getItem(STORAGE_KEYS.QR_ORDERS)) || [];
+    let salesHistory = JSON.parse(localStorage.getItem(STORAGE_KEYS.SALES)) || [];
+    let firebaseDbUrl = (localStorage.getItem(STORAGE_KEYS.FIREBASE_URL) || '').replace(/\/+$/, '');
+    let cloudPollTimer = null;
+    let knownQrOrderIds = new Set(qrOrders.map(o => o.id));
+
+    let shopInfo = JSON.parse(localStorage.getItem(STORAGE_KEYS.SHOP)) || {
+      name: 'SKY RESTAURANT & PUB',
+      address: 'Pocheon-si, Gyeonggi-do, Korea',
+      phone: '010-1234-5678'
+    };
+    let printerPrefs = JSON.parse(localStorage.getItem(STORAGE_KEYS.PRINTER)) || {
+      ip: '192.168.1.100',
+      paperSize: '80mm'
+    };
+
+    // BroadcastChannel for instant multi-tab communication on same browser
+    const posChannel = ('BroadcastChannel' in window) ? new BroadcastChannel('skypos_sync_channel') : null;
+    if (posChannel) {
+      posChannel.onmessage = (event) => {
+        if (event.data && event.data.type === 'NEW_QR_ORDER') {
+          const incoming = event.data.order;
+          if (!qrOrders.some(o => o.id === incoming.id)) {
+            qrOrders.unshift(incoming);
+            knownQrOrderIds.add(incoming.id);
+            localStorage.setItem(STORAGE_KEYS.QR_ORDERS, JSON.stringify(qrOrders));
+            playNotificationChime();
+            showToast(`🔔 ${I18N[currentLang].tableLabel} #${padTable(incoming.table)} — ${I18N[currentLang].newQrOrderShort}`, 'amber');
+            refreshBadgesAndViews();
+          }
+        }
+      };
+    }
+
+    // =========================================================================
+    // 3. INITIALIZATION & CLOUD SYNC ENGINE
+    // =========================================================================
+    window.addEventListener('DOMContentLoaded', async () => {
+      // Theme setup
+      const savedTheme = localStorage.getItem(STORAGE_KEYS.THEME) || 'dark';
+      if (savedTheme === 'dark') {
+        document.documentElement.classList.add('dark');
+        document.getElementById('dark-mode-btn').textContent = '☀️';
+      } else {
+        document.documentElement.classList.remove('dark');
+        document.getElementById('dark-mode-btn').textContent = '🌙';
+      }
+
+      // Parse URL parameters (?table=5&db=https://...) or hash (#table=5)
+      const params = new URLSearchParams(window.location.search);
+      const paramDb = params.get('db');
+      if (paramDb) {
+        firebaseDbUrl = paramDb.replace(/\/+$/, '');
+        localStorage.setItem(STORAGE_KEYS.FIREBASE_URL, firebaseDbUrl);
+      }
+
+      // Populate shop & printer & firebase inputs
+      document.getElementById('shop-name-input').value = shopInfo.name;
+      document.getElementById('shop-address-input').value = shopInfo.address;
+      document.getElementById('shop-phone-input').value = shopInfo.phone;
+      document.getElementById('wifi-printer-ip').value = printerPrefs.ip;
+      document.getElementById('printer-paper-size').value = printerPrefs.paperSize;
+      document.getElementById('firebase-db-url').value = firebaseDbUrl;
+
+      // Populate customer table dropdown (01..30)
+      const custSelect = document.getElementById('cust-table-select');
+      for (let i = 1; i <= 30; i++) {
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = `#${padTable(i)}`;
+        custSelect.appendChild(opt);
+      }
+
+      // Initialize Firebase Cloud sync if URL exists
+      if (firebaseDbUrl) {
+        initCloudSync();
+      }
+
+      // Apply language & render all views
+      setLanguage(currentLang);
+      updateClock();
+      setInterval(updateClock, 15000);
+
+      // Check if opened directly via QR scan (?table=X or #table=X)
+      let scannedTable = null;
+      if (params.get('table')) {
+        scannedTable = parseInt(params.get('table'), 10);
+      } else if (window.location.hash && window.location.hash.startsWith('#table=')) {
+        scannedTable = parseInt(window.location.hash.replace('#table=', ''), 10);
+      }
+
+      if (scannedTable >= 1 && scannedTable <= 30) {
+        isCustomerStandaloneMode = true;
+        if (firebaseDbUrl) {
+          await pullMenuFromCloud();
+        }
+        openCustomerSimulator(scannedTable);
+      }
+
+      // Cross-tab storage listener
+      window.addEventListener('storage', (e) => {
+        if (e.key === STORAGE_KEYS.QR_ORDERS && e.newValue) {
+          const updated = JSON.parse(e.newValue);
+          if (updated.length > qrOrders.length) {
+            qrOrders = updated;
+            playNotificationChime();
+            showToast('🔔 ' + I18N[currentLang].newQrOrderShort, 'amber');
+            refreshBadgesAndViews();
+          }
+        }
+      });
+    });
+
+    function padTable(n) {
+      return String(n).padStart(2, '0');
+    }
+
+    function saveState() {
+      localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(categories));
+      localStorage.setItem(STORAGE_KEYS.MENU, JSON.stringify(menuItems));
+      localStorage.setItem(STORAGE_KEYS.TABLE_CARTS, JSON.stringify(tableCarts));
+      localStorage.setItem(STORAGE_KEYS.QR_ORDERS, JSON.stringify(qrOrders));
+      localStorage.setItem(STORAGE_KEYS.SALES, JSON.stringify(salesHistory));
+
+      // Push catalog & shop info to Firebase Cloud so scanning phones see latest menu
+      if (firebaseDbUrl && !isCustomerStandaloneMode) {
+        pushCatalogToCloud();
+      }
+    }
+
+    async function saveAndConnectFirebase() {
+      const url = document.getElementById('firebase-db-url').value.trim().replace(/\/+$/, '');
+      firebaseDbUrl = url;
+      localStorage.setItem(STORAGE_KEYS.FIREBASE_URL, firebaseDbUrl);
+      if (!firebaseDbUrl) {
+        updateCloudStatusUI(false);
+        showToast('Switched to Local Mode', 'blue');
+        return;
+      }
+      await pushCatalogToCloud();
+      initCloudSync();
+      showToast('☁️ Firebase Cloud Connected (Real-time)!', 'emerald');
+    }
+
+    function updateCloudStatusUI(connected) {
+      const pillText = document.getElementById('cloud-status-text');
+      const pillDot = document.getElementById('cloud-status-dot');
+      const sideDot = document.getElementById('sidebar-cloud-dot');
+      const badge = document.getElementById('firebase-conn-badge');
+
+      if (connected) {
+        pillText.textContent = 'Cloud Real-time Sync';
+        pillDot.className = 'w-2 h-2 rounded-full bg-emerald-500 animate-pulse';
+        sideDot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400';
+        badge.textContent = 'Cloud Connected (Real-time)';
+        badge.className = 'px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-500 w-fit';
+      } else {
+        pillText.textContent = 'Local Mode';
+        pillDot.className = 'w-2 h-2 rounded-full bg-slate-400';
+        sideDot.className = 'w-2.5 h-2.5 rounded-full bg-slate-500';
+        badge.textContent = 'Local Mode';
+        badge.className = 'px-3 py-1 rounded-full text-xs font-bold bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 w-fit';
+      }
+    }
+
+    async function pushCatalogToCloud() {
+      if (!firebaseDbUrl) return;
+      try {
+        await fetch(`${firebaseDbUrl}/skypos_catalog.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ categories, menuItems, shopInfo })
+        });
+        updateCloudStatusUI(true);
+      } catch (err) {
+        updateCloudStatusUI(false);
+      }
+    }
+
+    async function pullMenuFromCloud() {
+      if (!firebaseDbUrl) return;
+      try {
+        const res = await fetch(`${firebaseDbUrl}/skypos_catalog.json`);
+        const data = await res.json();
+        if (data && data.menuItems) {
+          categories = data.categories || categories;
+          menuItems = data.menuItems || menuItems;
+          shopInfo = data.shopInfo || shopInfo;
+          localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(categories));
+          localStorage.setItem(STORAGE_KEYS.MENU, JSON.stringify(menuItems));
+        }
+      } catch (e) { /* Fallback to local */ }
+    }
+
+    function initCloudSync() {
+      if (!firebaseDbUrl) return;
+      updateCloudStatusUI(true);
+      if (cloudPollTimer) clearInterval(cloudPollTimer);
+
+      const pollCloudOrders = async () => {
+        if (!firebaseDbUrl || isCustomerStandaloneMode) return;
+        try {
+          const res = await fetch(`${firebaseDbUrl}/skypos_qr_orders.json`);
+          const data = await res.json();
+          if (data && typeof data === 'object') {
+            let hasBrandNew = false;
+            Object.entries(data).forEach(([fbKey, order]) => {
+              if (order && order.id && !knownQrOrderIds.has(order.id)) {
+                knownQrOrderIds.add(order.id);
+                order._fbKey = fbKey;
+                qrOrders.unshift(order);
+                hasBrandNew = true;
+              }
+            });
+            if (hasBrandNew) {
+              localStorage.setItem(STORAGE_KEYS.QR_ORDERS, JSON.stringify(qrOrders));
+              playNotificationChime();
+              showToast(`🔔 ${I18N[currentLang].newQrOrderShort}`, 'amber');
+              refreshBadgesAndViews();
+            }
+          }
+        } catch (err) { /* Silent retry */ }
+      };
+
+      pollCloudOrders();
+      cloudPollTimer = setInterval(pollCloudOrders, 3000);
+    }
+
+    function formatKRW(amount) {
+      return '₩' + Math.round(Number(amount) || 0).toLocaleString('en-US');
+    }
+
+    function getLocalizedName(obj) {
+      if (!obj) return '';
+      return obj[currentLang] || obj.en || obj.km || '';
+    }
+
+    function updateClock() {
+      const now = new Date();
+      document.getElementById('cart-order-time').textContent = now.toLocaleString();
+    }
+
+    function showToast(message, type = 'emerald') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      const colors = {
+        emerald: 'bg-emerald-600 text-white border-emerald-400',
+        amber: 'bg-amber-500 text-slate-950 border-amber-300 font-extrabold',
+        rose: 'bg-rose-600 text-white border-rose-400',
+        blue: 'bg-blue-600 text-white border-blue-400'
+      };
+      toast.className = `pointer-events-auto px-4 py-3 rounded-2xl shadow-xl border text-xs sm:text-sm font-bold flex items-center justify-between gap-2 transition-all duration-300 ${colors[type] || colors.emerald}`;
+      toast.innerHTML = `<span>${message}</span>`;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(-10px)';
+        setTimeout(() => toast.remove(), 300);
+      }, 3500);
+    }
+
+    // Web Audio API Chime for Incoming QR Orders
+    function playNotificationChime() {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const notes = [587.33, 880, 1174.66];
+        notes.forEach((freq, idx) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, ctx.currentTime + idx * 0.12);
+          gain.gain.setValueAtTime(0.18, ctx.currentTime + idx * 0.12);
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + idx * 0.12 + 0.45);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(ctx.currentTime + idx * 0.12);
+          osc.stop(ctx.currentTime + idx * 0.12 + 0.45);
+        });
+      } catch (e) { /* Ignore audio policy block */ }
+    }
+
+    // =========================================================================
+    // 4. LANGUAGE & THEME SWITCHING
+    // =========================================================================
+    function setLanguage(lang) {
+      currentLang = lang;
+      localStorage.setItem(STORAGE_KEYS.LANG, lang);
+      document.documentElement.lang = lang;
+
+      document.querySelectorAll('.lang-btn').forEach(btn => {
+        btn.classList.remove('bg-brand-600', 'text-white', 'shadow-xs');
+        btn.classList.add('text-slate-600', 'dark:text-slate-300');
+      });
+      const activeBtn = document.getElementById(`lang-${lang}`);
+      if (activeBtn) {
+        activeBtn.classList.add('bg-brand-600', 'text-white', 'shadow-xs');
+        activeBtn.classList.remove('text-slate-600', 'dark:text-slate-300');
+      }
+
+      document.querySelectorAll('.cust-lang-btn').forEach(btn => {
+        const match = (lang === 'km' && btn.textContent === 'ខ្មែរ') ||
+                      (lang === 'en' && btn.textContent === 'EN') ||
+                      (lang === 'ko' && btn.textContent === '한국어');
+        btn.className = `cust-lang-btn px-2 py-1 rounded text-[11px] font-bold ${match ? 'bg-gold-500 text-slate-950' : 'text-white/80'}`;
+      });
+
+      const dict = I18N[lang];
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (dict[key]) el.textContent = dict[key];
+      });
+      document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+        const key = el.getAttribute('data-i18n-placeholder');
+        if (dict[key]) el.placeholder = dict[key];
+      });
+
+      refreshBadgesAndViews();
+      if (!document.getElementById('customer-qr-app').classList.contains('hidden')) {
+        renderCustomerCategories();
+        renderCustomerMenu();
+      }
+    }
+
+    function toggleDarkMode() {
+      const html = document.documentElement;
+      const isDark = html.classList.toggle('dark');
+      localStorage.setItem(STORAGE_KEYS.THEME, isDark ? 'dark' : 'light');
+      document.getElementById('dark-mode-btn').textContent = isDark ? '☀️' : '🌙';
+    }
+
+    function toggleSidebar(open) {
+      const sidebar = document.getElementById('admin-sidebar');
+      const backdrop = document.getElementById('sidebar-backdrop');
+      if (open) {
+        sidebar.classList.remove('-translate-x-full');
+        backdrop.classList.remove('hidden');
+      } else {
+        sidebar.classList.add('-translate-x-full');
+        backdrop.classList.add('hidden');
+      }
+    }
+
+    function toggleMobileCart(open) {
+      const panel = document.getElementById('pos-cart-panel');
+      if (open) {
+        panel.classList.remove('translate-y-full');
+      } else {
+        panel.classList.add('translate-y-full');
+      }
+    }
+
+    function switchView(viewName) {
+      document.querySelectorAll('.view-section').forEach(sec => sec.classList.add('hidden'));
+      document.getElementById(`view-${viewName}`).classList.remove('hidden');
+
+      document.querySelectorAll('.nav-btn').forEach(btn => {
+        if (btn.getAttribute('data-view') === viewName) {
+          btn.classList.add('bg-brand-600', 'text-white', 'shadow-md');
+          btn.classList.remove('text-slate-300', 'hover:bg-white/10');
+        } else {
+          btn.classList.remove('bg-brand-600', 'text-white', 'shadow-md');
+          btn.classList.add('text-slate-300', 'hover:bg-white/10');
+        }
+      });
+
+      toggleSidebar(false);
+      refreshBadgesAndViews();
+    }
+
+    function refreshBadgesAndViews() {
+      document.getElementById('header-table-num').textContent = padTable(currentTable);
+      document.getElementById('cart-table-num').textContent = padTable(currentTable);
+
+      let occupiedCount = 0;
+      for (let t = 1; t <= 30; t++) {
+        if (tableCarts[t] && tableCarts[t].length > 0) occupiedCount++;
+      }
+      document.getElementById('badge-occupied-tables').textContent = `${occupiedCount}/30`;
+
+      const pendingCount = qrOrders.length;
+      const sideBadge = document.getElementById('badge-qr-orders');
+      const bellBadge = document.getElementById('bell-unread-badge');
+      if (pendingCount > 0) {
+        sideBadge.textContent = pendingCount;
+        sideBadge.classList.remove('hidden');
+        bellBadge.textContent = pendingCount;
+        bellBadge.classList.remove('hidden');
+      } else {
+        sideBadge.classList.add('hidden');
+        bellBadge.classList.add('hidden');
+      }
+
+      renderPosCategories();
+      renderPosMenu();
+      renderCart();
+      renderTablesGrid();
+      renderQrOrdersInbox();
+      renderMenuAdmin();
+      renderAnalytics();
+    }
+
+    // =========================================================================
+    // 5. POS TERMINAL & ORDER CART LOGIC
+    // =========================================================================
+    function renderPosCategories() {
+      const container = document.getElementById('pos-categories');
+      const allBtn = `
+        <button onclick="selectPosCat('all')" class="px-4 py-2 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition ${selectedPosCategory === 'all' ? 'bg-brand-600 text-white shadow-sm' : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800'}">
+          ${I18N[currentLang].allCat}
+        </button>
+      `;
+      const catBtns = categories.map(cat => `
+        <button onclick="selectPosCat('${cat.id}')" class="px-4 py-2 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition ${selectedPosCategory === cat.id ? 'bg-brand-600 text-white shadow-sm' : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800'}">
+          ${getLocalizedName(cat)}
+        </button>
+      `).join('');
+      container.innerHTML = allBtn + catBtns;
+    }
+
+    function selectPosCat(catId) {
+      selectedPosCategory = catId;
+      renderPosCategories();
+      renderPosMenu();
+    }
+
+    function renderMediaIcon(iconStr) {
+      if (iconStr && (iconStr.startsWith('http://') || iconStr.startsWith('https://'))) {
+        return `<img src="${iconStr}" alt="Dish" onerror="this.onerror=null;this.src='https://placehold.co/200x140/064e3b/fbbf24?text=Food';" class="w-full h-24 object-cover rounded-xl mb-2">`;
+      }
+      return `<div class="w-full h-20 rounded-xl bg-slate-100 dark:bg-slate-800/80 flex items-center justify-center text-4xl mb-2 group-hover:scale-105 transition-transform">${iconStr || '🍽️'}</div>`;
+    }
+
+    function renderPosMenu() {
+      const grid = document.getElementById('pos-menu-grid');
+      const query = (document.getElementById('pos-search').value || '').toLowerCase().trim();
+
+      const filtered = menuItems.filter(item => {
+        const matchCat = selectedPosCategory === 'all' || item.catId === selectedPosCategory;
+        const matchText = !query ||
+          (item.km && item.km.toLowerCase().includes(query)) ||
+          (item.en && item.en.toLowerCase().includes(query)) ||
+          (item.ko && item.ko.toLowerCase().includes(query));
+        return matchCat && matchText;
+      });
+
+      grid.innerHTML = filtered.map(item => `
+        <button onclick="addItemToTableCart('${item.id}')" class="group text-left bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-brand-500 dark:hover:border-brand-500 shadow-xs hover:shadow-md transition flex flex-col justify-between">
+          <div>
+            ${renderMediaIcon(item.icon)}
+            <h3 class="font-bold text-xs sm:text-sm line-clamp-2 text-slate-800 dark:text-slate-100">${getLocalizedName(item)}</h3>
+          </div>
+          <div class="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+            <span class="font-extrabold text-brand-600 dark:text-gold-400 text-xs sm:text-sm">${formatKRW(item.price)}</span>
+            <span class="w-6 h-6 rounded-lg bg-brand-500/15 text-brand-600 dark:text-emerald-400 flex items-center justify-center font-extrabold text-sm">+</span>
+          </div>
+        </button>
+      `).join('');
+    }
+
+    function addItemToTableCart(itemId) {
+      const item = menuItems.find(m => m.id === itemId);
+      if (!item) return;
+      if (!tableCarts[currentTable]) tableCarts[currentTable] = [];
+
+      const existing = tableCarts[currentTable].find(c => c.id === itemId);
+      if (existing) {
+        existing.qty += 1;
+      } else {
+        tableCarts[currentTable].push({
+          id: item.id,
+          km: item.km,
+          en: item.en,
+          ko: item.ko,
+          price: item.price,
+          qty: 1,
+          note: ''
+        });
+      }
+      saveState();
+      refreshBadgesAndViews();
+    }
+
+    function updateCartItemQty(index, delta) {
+      const cart = tableCarts[currentTable] || [];
+      if (!cart[index]) return;
+      cart[index].qty += delta;
+      if (cart[index].qty <= 0) {
+        cart.splice(index, 1);
+      }
+      saveState();
+      refreshBadgesAndViews();
+    }
+
+    function updateCartItemNote(index, noteVal) {
+      const cart = tableCarts[currentTable] || [];
+      if (!cart[index]) return;
+      cart[index].note = noteVal;
+      saveState();
+    }
+
+    function clearCurrentTableCart() {
+      tableCarts[currentTable] = [];
+      saveState();
+      refreshBadgesAndViews();
+    }
+
+    function getCartTotals(tableNum = currentTable) {
+      const cart = tableCarts[tableNum] || [];
+      const subtotal = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
+      const includeVat = document.getElementById('vat-toggle')?.checked || false;
+      const vat = includeVat ? Math.round(subtotal * 0.1) : 0;
+
+      const rawDisc = Math.max(0, Number(document.getElementById('discount-input')?.value || 0));
+      const discType = document.getElementById('discount-type')?.value || 'krw';
+      const discount = discType === 'pct' ? Math.round(subtotal * (Math.min(100, rawDisc) / 100)) : rawDisc;
+
+      const total = Math.max(0, subtotal + vat - discount);
+      const count = cart.reduce((sum, item) => sum + item.qty, 0);
+      return { cart, subtotal, vat, discount, total, count, includeVat };
+    }
+
+    function renderCart() {
+      const list = document.getElementById('cart-items-list');
+      const { cart, subtotal, vat, discount, total, count, includeVat } = getCartTotals(currentTable);
+
+      document.getElementById('mobile-cart-badge').textContent = count;
+      document.getElementById('mobile-cart-total').textContent = formatKRW(total);
+      document.getElementById('cart-subtotal').textContent = formatKRW(subtotal);
+      document.getElementById('cart-total').textContent = formatKRW(total);
+
+      const discRow = document.getElementById('cart-discount-row');
+      if (discount > 0) {
+        discRow.classList.remove('hidden');
+        discRow.classList.add('flex');
+        document.getElementById('cart-discount').textContent = '-' + formatKRW(discount);
+      } else {
+        discRow.classList.add('hidden');
+        discRow.classList.remove('flex');
+      }
+
+      const vatRow = document.getElementById('cart-vat-row');
+      if (includeVat) {
+        vatRow.classList.remove('hidden');
+        vatRow.classList.add('flex');
+        document.getElementById('cart-vat').textContent = formatKRW(vat);
+      } else {
+        vatRow.classList.add('hidden');
+        vatRow.classList.remove('flex');
+      }
+
+      if (cart.length === 0) {
+        list.innerHTML = `
+          <div class="h-full flex flex-col items-center justify-center text-slate-400 py-12 text-center">
+            <span class="text-4xl mb-2">🍽️</span>
+            <p class="text-xs font-semibold">${I18N[currentLang].emptyCart}</p>
+          </div>
+        `;
+        return;
+      }
+
+      list.innerHTML = cart.map((item, idx) => `
+        <div class="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200/70 dark:border-slate-700/70 space-y-2">
+          <div class="flex items-center justify-between gap-2">
+            <div class="min-w-0 flex-1">
+              <p class="font-bold text-xs sm:text-sm truncate">${getLocalizedName(item)}</p>
+              <p class="text-xs text-brand-600 dark:text-gold-400 font-semibold">${formatKRW(item.price)} × ${item.qty}</p>
+            </div>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button onclick="updateCartItemQty(${idx}, -1)" class="w-7 h-7 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 font-extrabold text-sm">-</button>
+              <span class="w-6 text-center font-extrabold text-xs">${item.qty}</span>
+              <button onclick="updateCartItemQty(${idx}, 1)" class="w-7 h-7 rounded-lg bg-brand-600 text-white font-extrabold text-sm">+</button>
+            </div>
+          </div>
+          <input type="text" value="${item.note || ''}" onchange="updateCartItemNote(${idx}, this.value)" placeholder="📝 Note (ឧ. មិនហឹរ / Less spicy)..." class="w-full px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900/70 border border-slate-200 dark:border-slate-700 text-[11px]">
+        </div>
+      `).join('');
+    }
+
+    // =========================================================================
+    // 6. 30 TABLES & QR CODE GENERATOR
+    // =========================================================================
+    function getTableZoneInfo(t) {
+      if (t <= 15) return { zone: 'regular', label: 'Regular' };
+      if (t <= 22) return { zone: 'vip', label: 'VIP / Round' };
+      return { zone: 'outdoor', label: 'Outdoor' };
+    }
+
+    function setTableZoneFilter(zone) {
+      selectedTableZone = zone;
+      document.querySelectorAll('.zone-btn').forEach(btn => {
+        btn.className = 'zone-btn px-4 py-2 rounded-xl text-xs font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800';
+      });
+      const active = document.getElementById(`zone-${zone}`);
+      if (active) {
+        active.className = 'zone-btn px-4 py-2 rounded-xl text-xs font-bold bg-brand-600 text-white';
+      }
+      renderTablesGrid();
+    }
+
+    function renderTablesGrid() {
+      const grid = document.getElementById('tables-grid');
+      let html = '';
+
+      for (let t = 1; t <= 30; t++) {
+        const zInfo = getTableZoneInfo(t);
+        if (selectedTableZone !== 'all' && zInfo.zone !== selectedTableZone) continue;
+
+        const cart = tableCarts[t] || [];
+        const hasQrAlert = qrOrders.some(o => Number(o.table) === t);
+        const isBusy = cart.length > 0;
+        const tableTotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
+
+        let cardStyle = 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800';
+        let statusBadge = `<span class="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">🟢 ${I18N[currentLang].statusFree}</span>`;
+
+        if (hasQrAlert) {
+          cardStyle = 'bg-amber-500/15 border-amber-500 qr-alert-pulse';
+          statusBadge = `<span class="text-[11px] font-extrabold text-amber-600 dark:text-amber-400">🔔 ${I18N[currentLang].statusQrNew}</span>`;
+        } else if (isBusy) {
+          cardStyle = 'bg-rose-500/10 border-rose-500/50';
+          statusBadge = `<span class="text-[11px] font-bold text-rose-600 dark:text-rose-400">🔴 ${I18N[currentLang].statusBusy}</span>`;
+        }
+
+        if (t === currentTable) {
+          cardStyle += ' ring-2 ring-brand-500';
+        }
+
+        html += `
+          <div class="p-3.5 rounded-2xl border ${cardStyle} flex flex-col justify-between transition hover:shadow-md">
+            <div onclick="selectTableForPos(${t})" class="cursor-pointer">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-base font-extrabold">${I18N[currentLang].tableLabel} ${padTable(t)}</span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 font-bold">${zInfo.label}</span>
+              </div>
+              <div>${statusBadge}</div>
+              <p class="mt-2 font-extrabold text-sm ${isBusy ? 'text-brand-600 dark:text-gold-400' : 'text-slate-400'}">
+                ${isBusy ? formatKRW(tableTotal) : '₩0'}
+              </p>
+            </div>
+            <div class="mt-3 pt-2 border-t border-slate-200/60 dark:border-slate-800 flex items-center justify-between gap-1">
+              <button onclick="openQrModalForTable(${t})" class="flex-1 py-1.5 px-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[11px] font-bold flex items-center justify-center gap-1">
+                <span>🏁</span> QR
+              </button>
+              <button onclick="openCustomerSimulator(${t})" class="flex-1 py-1.5 px-2 rounded-lg bg-gold-500/20 hover:bg-gold-500/30 text-amber-700 dark:text-gold-400 text-[11px] font-bold flex items-center justify-center gap-1">
+                <span>📱</span> Scan
+              </button>
+            </div>
+          </div>
+        `;
+      }
+      grid.innerHTML = html;
+    }
+
+    function selectTableForPos(tableNum) {
+      currentTable = tableNum;
+      switchView('pos');
+    }
+
+    function getTableQrUrl(tableNum) {
+      const base = window.location.href.split('?')[0].split('#')[0];
+      let url = `${base}?table=${tableNum}`;
+      if (firebaseDbUrl) {
+        url += `&db=${encodeURIComponent(firebaseDbUrl)}`;
+      }
+      return url;
+    }
+
+    function openQrModalForTable(tableNum) {
+      qrModalActiveTable = tableNum;
+      document.getElementById('qr-modal-table-num').textContent = padTable(tableNum);
+      const box = document.getElementById('qrcode-canvas-box');
+      box.innerHTML = '';
+      new QRCode(box, {
+        text: getTableQrUrl(tableNum),
+        width: 190,
+        height: 190,
+        colorDark: '#022c22',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.M
+      });
+      document.getElementById('qr-modal').classList.remove('hidden');
+    }
+
+    function downloadTableQrPng() {
+      const canvas = document.querySelector('#qrcode-canvas-box canvas');
+      if (!canvas) return;
+      const link = document.createElement('a');
+      link.download = `SkyPOS_Table_${padTable(qrModalActiveTable)}_QR.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    }
+
+    function launchSimulatorFromQrModal() {
+      closeModal('qr-modal');
+      openCustomerSimulator(qrModalActiveTable);
+    }
+
+    function printSingleTableQr() {
+      const canvas = document.querySelector('#qrcode-canvas-box canvas');
+      const dataUrl = canvas ? canvas.toDataURL() : '';
+      const printArea = document.getElementById('thermal-print-area');
+      printArea.innerHTML = `
+        <div style="text-align:center; padding:10px 0;">
+          <h2 style="font-size:16px; font-weight:bold; margin:0;">${shopInfo.name}</h2>
+          <p style="font-size:15px; font-weight:bold; margin:6px 0;">TABLE #${padTable(qrModalActiveTable)}</p>
+          ${dataUrl ? `<img src="${dataUrl}" style="width:160px; height:160px; margin:8px auto;" />` : ''}
+          <p style="font-size:11px; margin-top:6px;">ស្កេនដើម្បីកុម្ម៉ង់ម្ហូប • Scan to Order • QR 주문</p>
+        </div>
+      `;
+      printArea.classList.remove('hidden');
+      window.print();
+      printArea.classList.add('hidden');
+    }
+
+    function openAllQrPrintSheet() {
+      const printArea = document.getElementById('thermal-print-area');
+      let itemsHtml = `<div style="text-align:center; font-weight:bold; margin-bottom:8px;">${shopInfo.name} - 30 TABLE QRs</div>`;
+      for (let t = 1; t <= 30; t++) {
+        itemsHtml += `
+          <div style="border-bottom:1px dashed #000; padding:8px 0; text-align:center;">
+            <div style="font-weight:bold; font-size:14px;">TABLE #${padTable(t)}</div>
+            <div id="batch-qr-${t}" style="display:inline-block; margin:4px auto;"></div>
+            <div style="font-size:10px;">Scan to Order • ស្កេនកុម្ម៉ង់ម្ហូប</div>
+          </div>
+        `;
+      }
+      printArea.innerHTML = itemsHtml;
+      printArea.classList.remove('hidden');
+      for (let t = 1; t <= 30; t++) {
+        new QRCode(document.getElementById(`batch-qr-${t}`), {
+          text: getTableQrUrl(t),
+          width: 110,
+          height: 110
+        });
+      }
+      setTimeout(() => {
+        window.print();
+        printArea.classList.add('hidden');
+      }, 350);
+    }
+
+    // =========================================================================
+    // 7. CUSTOMER QR SELF-ORDERING SIMULATOR & INBOX
+    // =========================================================================
+    function openCustomerSimulator(tableNum = 1) {
+      const t = Number(tableNum) || 1;
+      document.getElementById('cust-table-badge').textContent = padTable(t);
+      document.getElementById('cust-table-select').value = t;
+      document.getElementById('cust-shop-title').textContent = shopInfo.name;
+
+      // Hide Admin switch button if accessed as real guest phone via ?table=X
+      const exitBtn = document.getElementById('cust-exit-admin-btn');
+      if (isCustomerStandaloneMode) {
+        exitBtn.classList.add('hidden');
+      } else {
+        exitBtn.classList.remove('hidden');
+      }
+
+      custCart = [];
+      updateCustCartBar();
+      renderCustomerCategories();
+      renderCustomerMenu();
+      document.getElementById('customer-qr-app').classList.remove('hidden');
+    }
+
+    function closeCustomerSimulator() {
+      document.getElementById('customer-qr-app').classList.add('hidden');
+      if (window.location.hash.startsWith('#table=')) {
+        history.replaceState(null, '', window.location.pathname + window.location.search);
+      }
+      refreshBadgesAndViews();
+    }
+
+    function changeCustomerTable(val) {
+      document.getElementById('cust-table-badge').textContent = padTable(val);
+    }
+
+    function renderCustomerCategories() {
+      const bar = document.getElementById('cust-categories');
+      const allBtn = `<button onclick="selectCustCat('all')" class="px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap ${selectedCustCategory === 'all' ? 'bg-brand-600 text-white' : 'bg-slate-100 dark:bg-slate-800'}">${I18N[currentLang].allCat}</button>`;
+      const btns = categories.map(c => `
+        <button onclick="selectCustCat('${c.id}')" class="px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap ${selectedCustCategory === c.id ? 'bg-brand-600 text-white' : 'bg-slate-100 dark:bg-slate-800'}">${getLocalizedName(c)}</button>
+      `).join('');
+      bar.innerHTML = allBtn + btns;
+    }
+
+    function selectCustCat(catId) {
+      selectedCustCategory = catId;
+      renderCustomerCategories();
+      renderCustomerMenu();
+    }
+
+    function renderCustomerMenu() {
+      const grid = document.getElementById('cust-menu-grid');
+      const filtered = menuItems.filter(m => selectedCustCategory === 'all' || m.catId === selectedCustCategory);
+
+      grid.innerHTML = filtered.map(item => {
+        const inCart = custCart.find(c => c.id === item.id);
+        const qty = inCart ? inCart.qty : 0;
+        return `
+          <div class="bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 shadow-xs">
+            <div class="flex items-center gap-3 min-w-0">
+              <div class="w-14 h-14 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-3xl shrink-0 overflow-hidden">
+                ${item.icon && item.icon.startsWith('http') ? `<img src="${item.icon}" class="w-full h-full object-cover">` : (item.icon || '🍽️')}
+              </div>
+              <div class="min-w-0">
+                <h4 class="font-bold text-sm truncate">${getLocalizedName(item)}</h4>
+                <p class="text-xs font-extrabold text-brand-600 dark:text-gold-400 mt-0.5">${formatKRW(item.price)}</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-1.5 shrink-0">
+              ${qty > 0 ? `
+                <button onclick="updateCustItem('${item.id}', -1)" class="w-8 h-8 rounded-xl bg-slate-200 dark:bg-slate-800 font-extrabold">-</button>
+                <span class="w-6 text-center font-extrabold text-sm">${qty}</span>
+              ` : ''}
+              <button onclick="updateCustItem('${item.id}', 1)" class="w-8 h-8 rounded-xl bg-brand-600 text-white font-extrabold">+</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function updateCustItem(itemId, delta) {
+      const item = menuItems.find(m => m.id === itemId);
+      if (!item) return;
+      const existing = custCart.find(c => c.id === itemId);
+      if (existing) {
+        existing.qty += delta;
+        if (existing.qty <= 0) {
+          custCart = custCart.filter(c => c.id !== itemId);
+        }
+      } else if (delta > 0) {
+        custCart.push({ id: item.id, km: item.km, en: item.en, ko: item.ko, price: item.price, qty: 1 });
+      }
+      updateCustCartBar();
+      renderCustomerMenu();
+    }
+
+    function updateCustCartBar() {
+      const count = custCart.reduce((s, i) => s + i.qty, 0);
+      const total = custCart.reduce((s, i) => s + i.price * i.qty, 0);
+      document.getElementById('cust-cart-summary').textContent = `${count} • ${formatKRW(total)}`;
+    }
+
+    async function submitCustomerQrOrder() {
+      if (custCart.length === 0) {
+        showToast(I18N[currentLang].emptyCart, 'rose');
+        return;
+      }
+      const btn = document.getElementById('cust-submit-btn');
+      btn.disabled = true;
+
+      const tableNum = Number(document.getElementById('cust-table-select').value) || 1;
+      const note = document.getElementById('cust-order-note').value.trim();
+      const newOrder = {
+        id: 'QR-' + Date.now().toString().slice(-6),
+        table: tableNum,
+        items: JSON.parse(JSON.stringify(custCart)),
+        note,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+
+      // 1. Push to Firebase Realtime Database if configured
+      if (firebaseDbUrl) {
+        try {
+          await fetch(`${firebaseDbUrl}/skypos_qr_orders.json`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(newOrder)
+          });
+        } catch (err) { /* Continue local fallback */ }
+      }
+
+      // 2. Push to localStorage + BroadcastChannel
+      knownQrOrderIds.add(newOrder.id);
+      qrOrders.unshift(newOrder);
+      localStorage.setItem(STORAGE_KEYS.QR_ORDERS, JSON.stringify(qrOrders));
+      if (posChannel) {
+        posChannel.postMessage({ type: 'NEW_QR_ORDER', order: newOrder });
+      }
+
+      btn.disabled = false;
+      custCart = [];
+      updateCustCartBar();
+      renderCustomerMenu();
+      document.getElementById('cust-order-note').value = '';
+
+      if (isCustomerStandaloneMode) {
+        // Show guest confirmation screen
+        showToast(`✅ បញ្ជូនការកុម្ម៉ង់សម្រាប់តុ #${padTable(tableNum)} បានជោគជ័យ!`, 'emerald');
+      } else {
+        playNotificationChime();
+        showToast(`🔔 ${I18N[currentLang].tableLabel} #${padTable(tableNum)} — ${I18N[currentLang].newQrOrderShort}`, 'amber');
+        closeCustomerSimulator();
+        switchView('qr-orders');
+      }
+    }
+
+    function renderQrOrdersInbox() {
+      const container = document.getElementById('qr-orders-list');
+      if (qrOrders.length === 0) {
+        container.innerHTML = `
+          <div class="md:col-span-2 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-10 text-center text-slate-400">
+            <span class="text-4xl block mb-2">📭</span>
+            <p class="text-sm font-semibold">${I18N[currentLang].noQrOrders}</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = qrOrders.map((order, idx) => {
+        const total = order.items.reduce((s, i) => s + i.price * i.qty, 0);
+        return `
+          <div class="bg-white dark:bg-slate-900 p-5 rounded-2xl border-2 border-amber-500/60 shadow-md space-y-3">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="px-3 py-1 rounded-xl bg-amber-500 text-slate-950 font-extrabold text-xs">
+                  ${I18N[currentLang].tableLabel} #${padTable(order.table)}
+                </span>
+                <span class="text-xs font-mono text-slate-500">${order.id} • ${order.time}</span>
+              </div>
+              <span class="font-extrabold text-brand-600 dark:text-gold-400">${formatKRW(total)}</span>
+            </div>
+
+            <div class="divide-y divide-slate-100 dark:divide-slate-800 text-xs sm:text-sm">
+              ${order.items.map(i => `
+                <div class="py-1.5 flex justify-between">
+                  <span class="font-semibold">${getLocalizedName(i)} <strong class="text-brand-600">×${i.qty}</strong></span>
+                  <span>${formatKRW(i.price * i.qty)}</span>
+                </div>
+              `).join('')}
+            </div>
+
+            ${order.note ? `<p class="text-xs p-2 rounded-xl bg-amber-500/10 text-amber-700 dark:text-amber-300 font-semibold">📝 ${order.note}</p>` : ''}
+
+            <div class="flex gap-2 pt-2">
+              <button onclick="acceptQrOrder(${idx})" class="flex-1 py-2.5 px-3 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-bold text-xs shadow-sm">
+                ✅ ${I18N[currentLang].acceptQrBtn}
+              </button>
+              <button onclick="dismissQrOrder(${idx})" class="py-2.5 px-3 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-500 font-bold text-xs">
+                ✕ ${I18N[currentLang].rejectQrBtn}
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function removeOrderFromFirebase(order) {
+      if (firebaseDbUrl && order && order._fbKey) {
+        try {
+          await fetch(`${firebaseDbUrl}/skypos_qr_orders/${order._fbKey}.json`, { method: 'DELETE' });
+        } catch (e) { /* Ignore */ }
+      }
+    }
+
+    async function acceptQrOrder(idx) {
+      const order = qrOrders[idx];
+      if (!order) return;
+      const t = Number(order.table);
+      if (!tableCarts[t]) tableCarts[t] = [];
+
+      order.items.forEach(qItem => {
+        const existing = tableCarts[t].find(c => c.id === qItem.id);
+        if (existing) {
+          existing.qty += qItem.qty;
+        } else {
+          tableCarts[t].push({ ...qItem, note: order.note || '' });
+        }
+      });
+
+      await removeOrderFromFirebase(order);
+      qrOrders.splice(idx, 1);
+      currentTable = t;
+      saveState();
+      showToast(`✅ Added to ${I18N[currentLang].tableLabel} #${padTable(t)}`, 'emerald');
+      switchView('pos');
+      // Automatically open Kitchen Order Ticket (KOT) preview for accepted QR order
+      printKitchenTicket(t);
+    }
+
+    async function dismissQrOrder(idx) {
+      const order = qrOrders[idx];
+      await removeOrderFromFirebase(order);
+      qrOrders.splice(idx, 1);
+      localStorage.setItem(STORAGE_KEYS.QR_ORDERS, JSON.stringify(qrOrders));
+      refreshBadgesAndViews();
+    }
+
+    // =========================================================================
+    // 8. MENU & CATEGORY ADMIN CRUD (ADD / EDIT / DELETE)
+    // =========================================================================
+    function renderMenuAdmin() {
+      const catList = document.getElementById('admin-category-list');
+      catList.innerHTML = categories.map(cat => `
+        <div class="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/70 text-xs">
+          <div>
+            <p class="font-bold">${getLocalizedName(cat)}</p>
+            <p class="text-[10px] text-slate-400">${cat.km} • ${cat.en} • ${cat.ko}</p>
+          </div>
+          <button onclick="deleteCategory('${cat.id}')" class="p-1.5 rounded-lg text-rose-500 hover:bg-rose-500/10 font-bold">🗑️</button>
+        </div>
+      `).join('');
+
+      const catSelect = document.getElementById('item-category');
+      catSelect.innerHTML = categories.map(c => `<option value="${c.id}">${getLocalizedName(c)}</option>`).join('');
+
+      document.getElementById('menu-total-count').textContent = menuItems.length;
+      const tbody = document.getElementById('admin-menu-tbody');
+      tbody.innerHTML = menuItems.map((item, idx) => {
+        const cat = categories.find(c => c.id === item.catId);
+        return `
+          <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+            <td class="p-3 text-xs text-slate-400">${idx + 1}</td>
+            <td class="p-3">
+              <div class="flex items-center gap-2.5">
+                <span class="text-xl">${item.icon && !item.icon.startsWith('http') ? item.icon : '🍽️'}</span>
+                <div>
+                  <p class="font-bold text-xs sm:text-sm">${getLocalizedName(item)}</p>
+                  <p class="text-[11px] text-slate-400">${item.km} / ${item.en} / ${item.ko}</p>
+                </div>
+              </div>
+            </td>
+            <td class="p-3 text-xs font-semibold">${cat ? getLocalizedName(cat) : '-'}</td>
+            <td class="p-3 text-right font-extrabold text-brand-600 dark:text-gold-400">${formatKRW(item.price)}</td>
+            <td class="p-3 text-center whitespace-nowrap">
+              <button onclick="startEditMenuItem('${item.id}')" class="px-2 py-1 rounded-lg bg-blue-500/15 hover:bg-blue-500/25 text-blue-500 text-xs font-bold mr-1">✏️</button>
+              <button onclick="deleteMenuItem('${item.id}')" class="px-2 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-500 text-xs font-bold">🗑️</button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function handleAddCategory(e) {
+      e.preventDefault();
+      const km = document.getElementById('cat-name-km').value.trim();
+      const en = document.getElementById('cat-name-en').value.trim();
+      const ko = document.getElementById('cat-name-ko').value.trim();
+      categories.push({ id: 'cat-' + Date.now(), km, en, ko });
+      e.target.reset();
+      saveState();
+      refreshBadgesAndViews();
+      showToast('✅ Category Added', 'emerald');
+    }
+
+    function deleteCategory(catId) {
+      categories = categories.filter(c => c.id !== catId);
+      saveState();
+      refreshBadgesAndViews();
+    }
+
+    function startEditMenuItem(id) {
+      const item = menuItems.find(m => m.id === id);
+      if (!item) return;
+      document.getElementById('edit-item-id').value = item.id;
+      document.getElementById('item-name-km').value = item.km;
+      document.getElementById('item-name-en').value = item.en;
+      document.getElementById('item-name-ko').value = item.ko;
+      document.getElementById('item-price').value = item.price;
+      document.getElementById('item-category').value = item.catId;
+      document.getElementById('item-icon').value = item.icon || '🍛';
+      document.getElementById('menu-form-heading').textContent = '✏️ កែសម្រួលមុខម្ហូប (Edit Dish)';
+      document.getElementById('cancel-edit-menu-btn').classList.remove('hidden');
+    }
+
+    function cancelEditMenuItem() {
+      document.getElementById('edit-item-id').value = '';
+      document.getElementById('item-name-km').value = '';
+      document.getElementById('item-name-en').value = '';
+      document.getElementById('item-name-ko').value = '';
+      document.getElementById('item-price').value = '';
+      document.getElementById('item-icon').value = '🍛';
+      document.getElementById('menu-form-heading').textContent = I18N[currentLang].addMenuItemTitle;
+      document.getElementById('cancel-edit-menu-btn').classList.add('hidden');
+    }
+
+    function handleSaveMenuItem(e) {
+      e.preventDefault();
+      const editId = document.getElementById('edit-item-id').value;
+      const km = document.getElementById('item-name-km').value.trim();
+      const en = document.getElementById('item-name-en').value.trim();
+      const ko = document.getElementById('item-name-ko').value.trim();
+      const price = Number(document.getElementById('item-price').value) || 1000;
+      const catId = document.getElementById('item-category').value;
+      const icon = document.getElementById('item-icon').value.trim() || '🍽️';
+
+      if (editId) {
+        const idx = menuItems.findIndex(m => m.id === editId);
+        if (idx !== -1) {
+          menuItems[idx] = { ...menuItems[idx], catId, km, en, ko, price, icon };
+        }
+        cancelEditMenuItem();
+        showToast('✅ Dish Updated', 'emerald');
+      } else {
+        menuItems.unshift({ id: 'm-' + Date.now(), catId, km, en, ko, price, icon });
+        e.target.reset();
+        document.getElementById('item-icon').value = '🍛';
+        showToast('✅ Dish Saved to Menu', 'emerald');
+      }
+
+      saveState();
+      refreshBadgesAndViews();
+    }
+
+    function deleteMenuItem(id) {
+      menuItems = menuItems.filter(m => m.id !== id);
+      saveState();
+      refreshBadgesAndViews();
+    }
+
+    function resetDemoData() {
+      categories = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
+      menuItems = JSON.parse(JSON.stringify(DEFAULT_MENU));
+      saveState();
+      refreshBadgesAndViews();
+      showToast('🔄 Default Menu Restored', 'blue');
+    }
+
+    // =========================================================================
+    // 9. CHECKOUT, SALES ANALYTICS & KHMER-SAFE PDF REPORT EXPORT
+    // =========================================================================
+    function openCheckoutModal() {
+      const { cart, total } = getCartTotals(currentTable);
+      if (cart.length === 0) {
+        showToast(I18N[currentLang].emptyCart, 'rose');
+        return;
+      }
+      document.getElementById('checkout-due-amount').textContent = formatKRW(total);
+      document.getElementById('cash-received-input').value = total;
+      calculateChange();
+      document.getElementById('checkout-modal').classList.remove('hidden');
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).classList.add('hidden');
+    }
+
+    function selectPaymentMethod(method) {
+      selectedPaymentMethod = method;
+      document.querySelectorAll('.pay-method-btn').forEach(btn => {
+        btn.className = 'pay-method-btn py-2.5 px-2 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-xs';
+      });
+      const active = document.getElementById(`pay-${method}`);
+      if (active) {
+        active.className = 'pay-method-btn py-2.5 px-2 rounded-xl border-2 border-brand-600 bg-brand-600/10 text-brand-600 dark:text-emerald-400 font-bold text-xs';
+      }
+      document.getElementById('cash-calc-box').style.display = method === 'Cash' ? 'block' : 'none';
+    }
+
+    function setQuickCash(val) {
+      document.getElementById('cash-received-input').value = val;
+      calculateChange();
+    }
+
+    function calculateChange() {
+      const { total } = getCartTotals(currentTable);
+      const received = Number(document.getElementById('cash-received-input').value) || 0;
+      const change = Math.max(0, received - total);
+      document.getElementById('checkout-change-amount').textContent = formatKRW(change);
+    }
+
+    function completeCheckout() {
+      const { cart, subtotal, vat, discount, total } = getCartTotals(currentTable);
+      if (cart.length === 0) return;
+
+      const received = Number(document.getElementById('cash-received-input').value) || total;
+      const change = selectedPaymentMethod === 'Cash' ? Math.max(0, received - total) : 0;
+
+      const invoice = {
+        invoiceNo: 'INV-' + Date.now().toString().slice(-6),
+        table: currentTable,
+        items: JSON.parse(JSON.stringify(cart)),
+        subtotal,
+        vat,
+        discount,
+        total,
+        cashReceived: received,
+        changeReturn: change,
+        paymentMethod: selectedPaymentMethod,
+        timestamp: new Date().toISOString(),
+        dateStr: new Date().toLocaleString()
+      };
+
+      salesHistory.unshift(invoice);
+      tableCarts[currentTable] = [];
+      document.getElementById('discount-input').value = 0;
+      saveState();
+
+      closeModal('checkout-modal');
+      toggleMobileCart(false);
+      refreshBadgesAndViews();
+
+      showInvoiceReceiptModal(invoice);
+      showToast(`✅ ${invoice.invoiceNo} Paid (${formatKRW(total)})`, 'emerald');
+    }
+
+    function getFilteredSales() {
+      const filter = document.getElementById('sales-filter')?.value || 'all';
+      const searchQ = (document.getElementById('sales-search')?.value || '').toLowerCase().trim();
+      let list = salesHistory;
+      if (filter === 'today') {
+        const todayPrefix = new Date().toISOString().slice(0, 10);
+        list = list.filter(s => s.timestamp && s.timestamp.startsWith(todayPrefix));
+      }
+      if (searchQ) {
+        list = list.filter(s =>
+          s.invoiceNo.toLowerCase().includes(searchQ) ||
+          String(s.table).includes(searchQ) ||
+          s.paymentMethod.toLowerCase().includes(searchQ)
+        );
+      }
+      return list;
+    }
+
+    function renderAnalytics() {
+      const list = getFilteredSales();
+      const revenue = list.reduce((s, inv) => s + inv.total, 0);
+      const ordersCount = list.length;
+      const avg = ordersCount > 0 ? Math.round(revenue / ordersCount) : 0;
+
+      document.getElementById('kpi-revenue').textContent = formatKRW(revenue);
+      document.getElementById('kpi-orders').textContent = ordersCount;
+      document.getElementById('kpi-avg').textContent = formatKRW(avg);
+
+      const itemMap = {};
+      list.forEach(inv => {
+        inv.items.forEach(it => {
+          if (!itemMap[it.id]) {
+            itemMap[it.id] = { km: it.km, en: it.en, ko: it.ko, qty: 0, rev: 0 };
+          }
+          itemMap[it.id].qty += it.qty;
+          itemMap[it.id].rev += it.qty * it.price;
+        });
+      });
+
+      const sortedBest = Object.values(itemMap).sort((a, b) => b.qty - a.qty).slice(0, 6);
+      const topDishEl = document.getElementById('kpi-top-dish');
+      topDishEl.textContent = sortedBest.length > 0 ? `${getLocalizedName(sortedBest[0])} (${sortedBest[0].qty})` : '-';
+
+      const maxQty = sortedBest.length > 0 ? sortedBest[0].qty : 1;
+      const bestContainer = document.getElementById('best-sellers-list');
+
+      if (sortedBest.length === 0) {
+        bestContainer.innerHTML = `<p class="text-xs text-slate-400 text-center py-6">${I18N[currentLang].noSalesYet}</p>`;
+      } else {
+        bestContainer.innerHTML = sortedBest.map((item, idx) => {
+          const pct = Math.round((item.qty / maxQty) * 100);
+          return `
+            <div class="space-y-1">
+              <div class="flex justify-between text-xs font-bold">
+                <span>#${idx + 1} ${getLocalizedName(item)}</span>
+                <span class="text-brand-600 dark:text-gold-400">${item.qty} sold (${formatKRW(item.rev)})</span>
+              </div>
+              <div class="w-full h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                <div class="h-full bg-gradient-to-r from-brand-600 to-gold-500 rounded-full" style="width:${pct}%"></div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      const tbody = document.getElementById('sales-history-tbody');
+      if (list.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-xs text-slate-400">${I18N[currentLang].noSalesYet}</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = list.map((inv, idx) => `
+        <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+          <td class="p-3 font-mono font-bold text-xs">${inv.invoiceNo}</td>
+          <td class="p-3 text-xs font-bold">#${padTable(inv.table)}</td>
+          <td class="p-3 text-xs text-slate-500">${inv.dateStr}</td>
+          <td class="p-3 text-xs"><span class="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-semibold">${inv.paymentMethod}</span></td>
+          <td class="p-3 text-right font-extrabold text-brand-600 dark:text-gold-400">${formatKRW(inv.total)}</td>
+          <td class="p-3 text-center">
+            <button onclick="reprintHistoryInvoice(${idx})" class="px-2.5 py-1 rounded-lg bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 text-xs font-bold">🧾</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function reprintHistoryInvoice(idx) {
+      const list = getFilteredSales();
+      if (list[idx]) showInvoiceReceiptModal(list[idx]);
+    }
+
+    function clearSalesHistory() {
+      salesHistory = [];
+      saveState();
+      renderAnalytics();
+    }
+
+    // Renders crisp Khmer/English/Korean report via html2canvas -> jsPDF so Unicode scripts never garble
+    async function exportSalesPDF() {
+      const list = getFilteredSales();
+      const totalRev = list.reduce((s, i) => s + i.total, 0);
+      const sandbox = document.getElementById('pdf-render-sandbox');
+
+      sandbox.innerHTML = `
+        <div style="font-family: 'Kantumruy Pro', 'Inter', 'Noto Sans KR', sans-serif; color: #0f172a;">
+          <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #059669; padding-bottom:12px; margin-bottom:16px;">
+            <div>
+              <h1 style="font-size:22px; font-weight:800; margin:0; color:#064e3b;">${shopInfo.name} — Sales Report</h1>
+              <p style="font-size:12px; color:#475569; margin:4px 0 0;">${shopInfo.address} • Tel: ${shopInfo.phone}</p>
+            </div>
+            <div style="text-align:right; font-size:12px;">
+              <div><strong>Date:</strong> ${new Date().toLocaleString()}</div>
+              <div><strong>Total Orders:</strong> ${list.length}</div>
+              <div style="font-size:15px; font-weight:800; color:#059669;">Total: ${formatKRW(totalRev)}</div>
+            </div>
+          </div>
+          <table style="width:100%; border-collapse:collapse; font-size:12px;">
+            <thead>
+              <tr style="background:#065f46; color:#ffffff;">
+                <th style="padding:8px; text-align:left; border:1px solid #cbd5e1;">Invoice #</th>
+                <th style="padding:8px; text-align:left; border:1px solid #cbd5e1;">Table</th>
+                <th style="padding:8px; text-align:left; border:1px solid #cbd5e1;">Date & Time</th>
+                <th style="padding:8px; text-align:left; border:1px solid #cbd5e1;">Payment</th>
+                <th style="padding:8px; text-align:right; border:1px solid #cbd5e1;">Total (KRW)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${list.length === 0
+                ? `<tr><td colspan="5" style="padding:16px; text-align:center; border:1px solid #cbd5e1;">No sales records</td></tr>`
+                : list.map(inv => `
+                  <tr>
+                    <td style="padding:7px; border:1px solid #cbd5e1; font-weight:bold;">${inv.invoiceNo}</td>
+                    <td style="padding:7px; border:1px solid #cbd5e1;">Table #${padTable(inv.table)}</td>
+                    <td style="padding:7px; border:1px solid #cbd5e1;">${inv.dateStr}</td>
+                    <td style="padding:7px; border:1px solid #cbd5e1;">${inv.paymentMethod}</td>
+                    <td style="padding:7px; border:1px solid #cbd5e1; text-align:right; font-weight:bold;">${formatKRW(inv.total)}</td>
+                  </tr>
+                `).join('')
+              }
+            </tbody>
+          </table>
+        </div>
+      `;
+
+      try {
+        const canvas = await html2canvas(sandbox, { scale: 2, backgroundColor: '#ffffff' });
+        const imgData = canvas.toDataURL('image/png');
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+        pdf.save(`SkyPOS_Sales_Report_${new Date().toISOString().slice(0, 10)}.pdf`);
+        showToast('📄 PDF Report Downloaded!', 'emerald');
+      } catch (err) {
+        showToast('PDF export error', 'rose');
+      } finally {
+        sandbox.innerHTML = '';
+      }
+    }
+
+    // =========================================================================
+    // 10. THERMAL PRINTER (BLUETOOTH ESC/POS + WIRELESS + SYSTEM PRINT)
+    // =========================================================================
+    let lastReceiptPlainText = '';
+
+    function buildReceiptHtmlAndText(data, isKitchen = false) {
+      const lines = [];
+      lines.push('================================');
+      lines.push(shopInfo.name.toUpperCase());
+      if (!isKitchen) {
+        lines.push(shopInfo.address);
+        lines.push('TEL: ' + shopInfo.phone);
+      } else {
+        lines.push('*** KITCHEN ORDER (KOT) ***');
+      }
+      lines.push('================================');
+      lines.push(`TABLE: #${padTable(data.table)}   ${data.invoiceNo || ''}`);
+      lines.push(`TIME : ${data.dateStr || new Date().toLocaleString()}`);
+      lines.push('--------------------------------');
+
+      let itemsHtml = '';
+      data.items.forEach(it => {
+        const name = getLocalizedName(it);
+        const lineTotal = formatKRW(it.price * it.qty);
+        lines.push(`${it.qty}x ${name} ${isKitchen ? '' : lineTotal}`);
+        if (it.note) lines.push(`   * Note: ${it.note}`);
+        itemsHtml += `
+          <div style="margin:4px 0;">
+            <div style="display:flex; justify-content:space-between;">
+              <span><strong>${it.qty}x</strong> ${name}</span>
+              ${isKitchen ? '' : `<span>${lineTotal}</span>`}
+            </div>
+            ${it.note ? `<div style="font-size:10px; color:#b45309;">* ${it.note}</div>` : ''}
+          </div>
+        `;
+      });
+
+      lines.push('--------------------------------');
+      let totalsHtml = '';
+      if (!isKitchen) {
+        lines.push(`SUBTOTAL : ${formatKRW(data.subtotal)}`);
+        if (data.vat > 0) lines.push(`VAT (10%): ${formatKRW(data.vat)}`);
+        if (data.discount > 0) lines.push(`DISCOUNT : -${formatKRW(data.discount)}`);
+        lines.push(`TOTAL    : ${formatKRW(data.total)}`);
+        lines.push(`PAYMENT  : ${data.paymentMethod || 'Pending'}`);
+        if (data.changeReturn > 0) lines.push(`CHANGE   : ${formatKRW(data.changeReturn)}`);
+        lines.push('================================');
+        lines.push('Thank you! សូមអរគុណ! 감사합니다!');
+
+        totalsHtml = `
+          <div style="border-top:1px dashed #000; margin-top:6px; padding-top:6px;">
+            <div style="display:flex; justify-content:space-between;"><span>Subtotal:</span><span>${formatKRW(data.subtotal)}</span></div>
+            ${data.vat > 0 ? `<div style="display:flex; justify-content:space-between;"><span>VAT (10%):</span><span>${formatKRW(data.vat)}</span></div>` : ''}
+            ${data.discount > 0 ? `<div style="display:flex; justify-content:space-between;"><span>Discount:</span><span>-${formatKRW(data.discount)}</span></div>` : ''}
+            <div style="display:flex; justify-content:space-between; font-size:14px; font-weight:bold; margin-top:4px;">
+              <span>TOTAL:</span><span>${formatKRW(data.total)}</span>
+            </div>
+            <div style="margin-top:4px; font-size:11px;">Payment: ${data.paymentMethod || 'Pending'}</div>
+            ${data.changeReturn > 0 ? `<div style="font-size:11px;">Change: ${formatKRW(data.changeReturn)}</div>` : ''}
+          </div>
+          <div style="text-align:center; border-top:1px dashed #000; margin-top:8px; padding-top:6px; font-size:11px;">
+            Thank you! សូមអរគុណ! 감사합니다!
+          </div>
+        `;
+      }
+
+      lastReceiptPlainText = lines.join('\n') + '\n\n\n';
+
+      return `
+        <div style="text-align:center; border-bottom:1px dashed #000; padding-bottom:6px; margin-bottom:6px;">
+          <div style="font-weight:bold; font-size:15px;">${shopInfo.name}</div>
+          ${isKitchen
+            ? `<div style="font-weight:bold; font-size:13px; margin-top:3px;">*** KITCHEN ORDER (KOT) ***</div>`
+            : `<div style="font-size:11px;">${shopInfo.address}<br/>Tel: ${shopInfo.phone}</div>`
+          }
+        </div>
+        <div style="font-size:12px; margin-bottom:6px;">
+          <div><strong>Table: #${padTable(data.table)}</strong> ${data.invoiceNo ? `(${data.invoiceNo})` : ''}</div>
+          <div>Time: ${data.dateStr || new Date().toLocaleString()}</div>
+        </div>
+        <div style="border-top:1px dashed #000; padding-top:6px;">
+          ${itemsHtml}
+        </div>
+        ${totalsHtml}
+      `;
+    }
+
+    function printKitchenTicket(tableNum) {
+      const { cart } = getCartTotals(tableNum);
+      if (cart.length === 0) {
+        showToast(I18N[currentLang].emptyCart, 'rose');
+        return;
+      }
+      const html = buildReceiptHtmlAndText({ table: tableNum, items: cart }, true);
+      document.getElementById('receipt-modal-title').textContent = '👨‍🍳 Kitchen Order Ticket (KOT)';
+      document.getElementById('receipt-preview-paper').innerHTML = html;
+      document.getElementById('thermal-print-area').innerHTML = html;
+      document.getElementById('receipt-modal').classList.remove('hidden');
+    }
+
+    function previewAndPrintReceipt(tableNum) {
+      const totals = getCartTotals(tableNum);
+      if (totals.cart.length === 0) {
+        showToast(I18N[currentLang].emptyCart, 'rose');
+        return;
+      }
+      const html = buildReceiptHtmlAndText({
+        table: tableNum,
+        items: totals.cart,
+        subtotal: totals.subtotal,
+        vat: totals.vat,
+        discount: totals.discount,
+        total: totals.total
+      }, false);
+      document.getElementById('receipt-modal-title').textContent = '🧾 Customer Bill Preview';
+      document.getElementById('receipt-preview-paper').innerHTML = html;
+      document.getElementById('thermal-print-area').innerHTML = html;
+      document.getElementById('receipt-modal').classList.remove('hidden');
+    }
+
+    function showInvoiceReceiptModal(invoice) {
+      const html = buildReceiptHtmlAndText(invoice, false);
+      document.getElementById('receipt-modal-title').textContent = `🧾 ${invoice.invoiceNo}`;
+      document.getElementById('receipt-preview-paper').innerHTML = html;
+      document.getElementById('thermal-print-area').innerHTML = html;
+      document.getElementById('receipt-modal').classList.remove('hidden');
+    }
+
+    async function executeThermalPrint() {
+      if (bluetoothCharacteristic) {
+        try {
+          const encoder = new TextEncoder();
+          const escInit = new Uint8Array([0x1B, 0x40]);
+          const escCut = new Uint8Array([0x1D, 0x56, 0x41, 0x10]);
+          const textBytes = encoder.encode(lastReceiptPlainText);
+
+          await bluetoothCharacteristic.writeValue(escInit);
+          for (let i = 0; i < textBytes.length; i += 100) {
+            await bluetoothCharacteristic.writeValue(textBytes.slice(i, i + 100));
+          }
+          await bluetoothCharacteristic.writeValue(escCut);
+          showToast('🖨️ Sent to Bluetooth Thermal Printer!', 'emerald');
+          return;
+        } catch (err) {
+          showToast('Bluetooth fallback to Wireless/System Print', 'amber');
+        }
+      }
+
+      const printArea = document.getElementById('thermal-print-area');
+      printArea.style.width = printerPrefs.paperSize === '58mm' ? '58mm' : '80mm';
+      printArea.classList.remove('hidden');
+      window.print();
+      printArea.classList.add('hidden');
+    }
+
+    async function connectBluetoothPrinter() {
+      if (!navigator.bluetooth) {
+        showToast('Web Bluetooth requires Chrome/Edge over HTTPS or localhost', 'rose');
+        return;
+      }
+      try {
+        bluetoothDevice = await navigator.bluetooth.requestDevice({
+          acceptAllDevices: true,
+          optionalServices: [
+            '000018f0-0000-1000-8000-00805f9b34fb',
+            '49535343-fe7d-4ae5-8fa9-9fafd205e455',
+            'e7810a71-73ae-499d-8c15-faa9aef0c3f2'
+          ]
+        });
+        const server = await bluetoothDevice.gatt.connect();
+        const services = await server.getPrimaryServices();
+        for (const service of services) {
+          const chars = await service.getCharacteristics();
+          for (const c of chars) {
+            if (c.properties.write || c.properties.writeWithoutResponse) {
+              bluetoothCharacteristic = c;
+              break;
+            }
+          }
+          if (bluetoothCharacteristic) break;
+        }
+
+        document.getElementById('bt-status-badge').textContent = bluetoothDevice.name || 'Connected';
+        document.getElementById('bt-status-badge').className = 'px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-500';
+        showToast(`✅ Connected: ${bluetoothDevice.name || 'Thermal Printer'}`, 'emerald');
+      } catch (err) {
+        showToast('Bluetooth connection cancelled or failed', 'amber');
+      }
+    }
+
+    function testThermalPrint() {
+      const html = buildReceiptHtmlAndText({
+        table: 1,
+        invoiceNo: 'TEST-001',
+        items: [{ km: 'តេស្តម៉ាស៊ីនព្រីន', en: 'Printer Test OK', ko: '프린터 테스트', price: 1000, qty: 1 }],
+        subtotal: 1000,
+        vat: 0,
+        discount: 0,
+        total: 1000,
+        paymentMethod: 'TEST'
+      }, false);
+      document.getElementById('thermal-print-area').innerHTML = html;
+      executeThermalPrint();
+    }
+
+    function savePrinterPrefs(notify = false) {
+      printerPrefs.ip = document.getElementById('wifi-printer-ip').value.trim();
+      printerPrefs.paperSize = document.getElementById('printer-paper-size').value;
+      localStorage.setItem(STORAGE_KEYS.PRINTER, JSON.stringify(printerPrefs));
+      if (notify) showToast('💾 Wireless Printer Settings Saved', 'emerald');
+    }
+
+    function saveShopInfo() {
+      shopInfo.name = document.getElementById('shop-name-input').value.trim() || 'SKY POS';
+      shopInfo.address = document.getElementById('shop-address-input').value.trim();
+      shopInfo.phone = document.getElementById('shop-phone-input').value.trim();
+      localStorage.setItem(STORAGE_KEYS.SHOP, JSON.stringify(shopInfo));
+      if (firebaseDbUrl) pushCatalogToCloud();
+      showToast('✅ Shop Header Saved', 'emerald');
+    }
+  </script>
+</body>
+</html>
